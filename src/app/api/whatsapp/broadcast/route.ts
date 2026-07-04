@@ -1,0 +1,256 @@
+import { NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+import { getDefaultInstanceName } from '@/lib/whatsapp/resolve-send-target'
+import { sendText, sendMedia } from '@/lib/whatsapp/provider/evolution'
+import { whichAreOnWhatsApp } from '@/lib/whatsapp/provider/number-check'
+import { renderTemplateText, templateMedia } from '@/lib/whatsapp/broadcast-core'
+import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard'
+import type { MessageTemplate } from '@/types'
+import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils'
+import {
+  checkRateLimit,
+  rateLimitResponse,
+  RATE_LIMITS,
+} from '@/lib/rate-limit'
+
+interface BroadcastResult {
+  phone: string
+  status: 'sent' | 'failed'
+  whatsapp_message_id?: string
+  error?: string
+}
+
+/**
+ * Two input shapes are accepted:
+ *
+ *   NEW (preferred — supports per-recipient variable substitution):
+ *     {
+ *       recipients: Array<{ phone: string; params: string[] }>,
+ *       template_name, template_language
+ *     }
+ *
+ *   LEGACY (all phones receive the same params — kept so existing
+ *   callers don't break):
+ *     {
+ *       phone_numbers: string[],
+ *       template_params: string[],
+ *       template_name, template_language
+ *     }
+ *
+ * Previous implementation only supported the legacy shape, and the
+ * sending hook was forced to ship every batch with `templateParams[0]`
+ * — meaning every recipient got contact-0's personalization. The new
+ * shape is what actually fixes that.
+ */
+interface NewRecipient {
+  phone: string
+  /** Body variable values, one per {{N}}. */
+  params?: string[]
+}
+
+export async function POST(request: Request) {
+  try {
+    const supabase = await createClient()
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Per-user broadcast budget. Note: this limits how often a user
+    // can *start* a campaign, not how many messages go out inside
+    // one — the fan-out loop below runs without additional gating.
+    const limit = checkRateLimit(`broadcast:${user.id}`, RATE_LIMITS.broadcast)
+    if (!limit.success) {
+      return rateLimitResponse(limit)
+    }
+
+    // Resolve the caller's account_id. whatsapp_config + templates
+    // + broadcasts are all account-scoped post-multi-user, so the
+    // old `.eq('user_id', user.id)` filters miss every row created
+    // by a teammate.
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('account_id')
+      .eq('user_id', user.id)
+      .maybeSingle()
+    const accountId = profile?.account_id as string | undefined
+    if (!accountId) {
+      return NextResponse.json(
+        { error: 'Your profile is not linked to an account.' },
+        { status: 403 },
+      )
+    }
+
+    const body = await request.json()
+    const {
+      recipients: newRecipients,
+      phone_numbers,
+      template_name,
+      template_language,
+      template_params,
+    } = body
+
+    // Normalize to a list of {phone, params} regardless of shape.
+    let recipients: NewRecipient[]
+    if (Array.isArray(newRecipients) && newRecipients.length > 0) {
+      recipients = newRecipients
+    } else if (Array.isArray(phone_numbers) && phone_numbers.length > 0) {
+      const shared: string[] = Array.isArray(template_params)
+        ? template_params
+        : []
+      recipients = phone_numbers.map((phone: string) => ({
+        phone,
+        params: shared,
+      }))
+    } else {
+      return NextResponse.json(
+        {
+          error:
+            'Provide either `recipients` (preferred) or `phone_numbers` — must be a non-empty array',
+        },
+        { status: 400 }
+      )
+    }
+
+    if (!template_name) {
+      return NextResponse.json(
+        { error: 'template_name is required' },
+        { status: 400 }
+      )
+    }
+
+    const instanceName = await getDefaultInstanceName(supabase, accountId)
+
+    if (!instanceName) {
+      return NextResponse.json(
+        {
+          error: 'WhatsApp not connected. Scan the QR code in Settings first.',
+        },
+        { status: 400 }
+      )
+    }
+
+    // Load the template row once so sendTemplateMessage can build
+    // header + button components on each iteration. Loading inside
+    // the loop would N+1 against Supabase for every recipient.
+    // Guard against a malformed local row crashing every send in
+    // the loop with the same opaque TypeError — fail loudly once.
+    const { data: rawTemplateRow } = await supabase
+      .from('message_templates')
+      .select('*')
+      .eq('account_id', accountId)
+      .eq('name', template_name)
+      .eq('language', template_language || 'en_US')
+      .maybeSingle()
+    if (rawTemplateRow && !isMessageTemplate(rawTemplateRow)) {
+      return NextResponse.json(
+        {
+          error:
+            'Template row is malformed locally — run "Sync from Meta" in Settings to repair it before broadcasting.',
+        },
+        { status: 500 },
+      )
+    }
+    const templateRow = (rawTemplateRow as MessageTemplate | null) ?? null
+    const media = templateMedia(templateRow)
+
+    // One batched WhatsApp-number check for the whole broadcast.
+    const onWa = await whichAreOnWhatsApp(
+      instanceName,
+      recipients.map((r) => sanitizePhoneForMeta(r.phone)),
+    )
+
+    const results: BroadcastResult[] = []
+    let sentCount = 0
+    let failedCount = 0
+
+    for (const recipient of recipients) {
+      const sanitized = sanitizePhoneForMeta(recipient.phone)
+
+      if (!isValidE164(sanitized)) {
+        results.push({
+          phone: recipient.phone,
+          status: 'failed',
+          error: 'Invalid phone number format',
+        })
+        failedCount++
+        continue
+      }
+
+      if (onWa.get(sanitized.replace(/\D/g, '')) === false) {
+        results.push({
+          phone: recipient.phone,
+          status: 'failed',
+          error: 'Not a WhatsApp number',
+        })
+        failedCount++
+        continue
+      }
+
+      // Render the snippet body with this recipient's params and send it
+      // via the account's Evolution instance (text, or media if the
+      // snippet has a media header).
+      const text = renderTemplateText(templateRow, recipient.params ?? [])
+      const toDigits = sanitized.replace(/\D/g, '')
+      let sentMessageId: string | null = null
+      let lastError: string | null = null
+
+      try {
+        if (media) {
+          const result = await sendMedia({
+            instanceName,
+            to: toDigits,
+            kind: media.kind,
+            media: media.url,
+            caption: text || undefined,
+          })
+          sentMessageId = result.messageId
+        } else {
+          const result = await sendText({ instanceName, to: toDigits, text })
+          sentMessageId = result.messageId
+        }
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : 'Unknown error'
+      }
+
+      if (sentMessageId) {
+        results.push({
+          phone: recipient.phone,
+          status: 'sent',
+          whatsapp_message_id: sentMessageId,
+        })
+        sentCount++
+      } else {
+        console.error(
+          `Failed to send broadcast to ${recipient.phone}:`,
+          lastError
+        )
+        results.push({
+          phone: recipient.phone,
+          status: 'failed',
+          error: lastError || 'Unknown error',
+        })
+        failedCount++
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      total: recipients.length,
+      sent: sentCount,
+      failed: failedCount,
+      results,
+    })
+  } catch (error) {
+    console.error('Error in WhatsApp broadcast POST:', error)
+    return NextResponse.json(
+      { error: 'Failed to process broadcast' },
+      { status: 500 }
+    )
+  }
+}

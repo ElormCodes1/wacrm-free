@@ -1,0 +1,70 @@
+# Local Evolution API stack for wacrm-free development.
+# Self-contained (no external dokploy-network). Ports bound to localhost only.
+#
+#   cd infra/evolution && docker compose up -d
+#   API: http://localhost:8088   (host 8080 is taken by a local Apache)
+#
+# Note: the evolution-manager admin UI is intentionally NOT included — its
+# :latest image ships a broken nginx config and crash-loops, and we don't need
+# it: wacrm-free is the frontend and talks to the API directly. Admin is done
+# via the REST API (curl) or the app itself.
+#
+services:
+  evolution-api:
+    container_name: wacrm_evolution_api
+    image: evoapicloud/evolution-api:latest
+    restart: unless-stopped
+    depends_on:
+      - evolution-redis
+      - evolution-postgres
+    ports:
+      - "127.0.0.1:8088:8080"
+    volumes:
+      - evolution_instances:/evolution/instances
+    networks:
+      - evolution-net
+    env_file:
+      - .env
+
+  evolution-redis:
+    container_name: wacrm_evolution_redis
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --port 6379 --appendonly yes
+    volumes:
+      - evolution_redis:/data
+    networks:
+      evolution-net:
+        aliases:
+          - evolution-redis
+
+  evolution-postgres:
+    container_name: wacrm_evolution_postgres
+    image: postgres:15-alpine
+    restart: unless-stopped
+    command:
+      - postgres
+      - -c
+      - max_connections=1000
+      - -c
+      - listen_addresses=*
+    environment:
+      - POSTGRES_DB=${POSTGRES_DATABASE}
+      - POSTGRES_USER=${POSTGRES_USERNAME}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - evolution_postgres:/var/lib/postgresql/data
+    networks:
+      evolution-net:
+        aliases:
+          - evolution-postgres
+
+volumes:
+  evolution_instances:
+  evolution_redis:
+  evolution_postgres:
+
+networks:
+  evolution-net:
+    name: wacrm-evolution-net
+    driver: bridge
