@@ -1,0 +1,19 @@
+# Keep the build context small + never leak secrets into the image.
+node_modules
+.next
+.git
+.github
+**/.env
+**/.env.*
+!.env.local.example
+npm-debug.log*
+*.tsbuildinfo
+coverage
+.vscode
+.idea
+.DS_Store
+docs
+infra/evolution/instances
+README.md
+CHANGELOG.md
+CONTRIBUTING.md
