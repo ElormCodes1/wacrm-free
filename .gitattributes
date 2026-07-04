@@ -1,0 +1,8 @@
+# Normalize line endings across contributors (avoids CRLF/LF churn).
+* text=auto eol=lf
+
+# Keep shell scripts LF even on Windows checkouts.
+*.sh text eol=lf
+
+# Mark generated files so they don't skew GitHub's language stats.
+package-lock.json linguist-generated=true
