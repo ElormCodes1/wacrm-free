@@ -7,7 +7,7 @@ import {
   fetchGroupInfo,
 } from '@/lib/whatsapp/provider/evolution'
 import { normalizePhone } from '@/lib/whatsapp/phone-utils'
-import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
+import { findExistingContact } from '@/lib/contacts/dedupe'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply'
@@ -1269,40 +1269,90 @@ async function findOrCreateContact(
   name: string,
   isGroup = false,
 ): Promise<ContactOutcome | null> {
-  const existingContact = await findExistingContact(supabaseAdmin(), accountId, phone)
+  // Evolution delivers each inbound message as its own webhook POST, so a
+  // burst from a brand-new number runs this concurrently N times. The DB
+  // UNIQUE(account_id, phone_normalized) index lets exactly one insert win;
+  // every loser MUST resolve to that winner, never drop its message.
+  //
+  // A single find→insert→re-select-once was lossy under load: a concurrent
+  // insert can fail with a non-23505 error (deadlock / serialization /
+  // transient pooler hiccup during the burst), or the one-shot re-select
+  // can miss, and either fell straight through to `return null` — dropping
+  // the message. Retrying find→insert re-resolves the winner on the next
+  // pass instead (the await between passes gives the winner time to commit).
+  const MAX_ATTEMPTS = 4
+  let lastError: unknown = null
 
-  if (existingContact) {
-    if (name && name !== existingContact.name) {
-      await supabaseAdmin()
-        .from('contacts')
-        .update({ name, updated_at: new Date().toISOString() })
-        .eq('id', existingContact.id)
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const existingContact = await findExistingContact(supabaseAdmin(), accountId, phone)
+    if (existingContact) {
+      if (name && name !== existingContact.name) {
+        await supabaseAdmin()
+          .from('contacts')
+          .update({ name, updated_at: new Date().toISOString() })
+          .eq('id', existingContact.id)
+      }
+      return { contact: existingContact, wasCreated: false }
     }
-    return { contact: existingContact, wasCreated: false }
+
+    const { data: newContact, error: createError } = await supabaseAdmin()
+      .from('contacts')
+      .insert({
+        account_id: accountId,
+        user_id: configOwnerUserId,
+        phone,
+        name: name || phone,
+        is_group: isGroup,
+      })
+      .select()
+      .single()
+
+    if (!createError) return { contact: newContact, wasCreated: true }
+
+    // Insert failed — a lost race (unique violation) or a transient error.
+    // Loop back to re-resolve the winner. A genuinely permanent error just
+    // re-fails until attempts run out, then returns null (as before).
+    lastError = createError
   }
 
-  const { data: newContact, error: createError } = await supabaseAdmin()
-    .from('contacts')
-    .insert({
-      account_id: accountId,
-      user_id: configOwnerUserId,
-      phone,
-      name: name || phone,
-      is_group: isGroup,
-    })
-    .select()
-    .single()
+  // Exhausted retries — one final resolve for a winner that has since
+  // committed, else give up and log.
+  const raced = await findExistingContact(supabaseAdmin(), accountId, phone)
+  if (raced) return { contact: raced, wasCreated: false }
+  console.error('Error creating contact (retries exhausted):', lastError)
+  return null
+}
 
-  if (createError) {
-    if (isUniqueViolation(createError)) {
-      const raced = await findExistingContact(supabaseAdmin(), accountId, phone)
-      if (raced) return { contact: raced, wasCreated: false }
-    }
-    console.error('Error creating contact:', createError)
-    return null
+// Find the account's (single) conversation for a contact. `.order().limit(1)
+// .maybeSingle()` — NOT `.single()`, which ERRORS on 2+ rows and drove the
+// runaway-duplication bug. Collapses onto the OLDEST row so it recovers even
+// if duplicates somehow exist. The DB UNIQUE(account_id, contact_id) index
+// (migration 037) is the authoritative guard.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function findConversation(accountId: string, contactId: string): Promise<any | null> {
+  const { data } = await supabaseAdmin()
+    .from('conversations')
+    .select('*')
+    .eq('account_id', accountId)
+    .eq('contact_id', contactId)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+  return data ?? null
+}
+
+// Keep the conversation tagged with the number it's currently on, so replies
+// go out from the same line the customer reached.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function retagConversationNumber(conv: any, whatsappConfigId?: string) {
+  if (whatsappConfigId && conv.whatsapp_config_id !== whatsappConfigId) {
+    await supabaseAdmin()
+      .from('conversations')
+      .update({ whatsapp_config_id: whatsappConfigId })
+      .eq('id', conv.id)
+    conv.whatsapp_config_id = whatsappConfigId
   }
-
-  return { contact: newContact, wasCreated: true }
+  return conv
 }
 
 async function findOrCreateConversation(
@@ -1311,41 +1361,41 @@ async function findOrCreateConversation(
   contactId: string,
   whatsappConfigId?: string,
 ) {
-  const { data: existing, error: findError } = await supabaseAdmin()
-    .from('conversations')
-    .select('*')
-    .eq('account_id', accountId)
-    .eq('contact_id', contactId)
-    .single()
+  // Same burst-concurrency hazard as findOrCreateContact: Evolution delivers
+  // each message as its own POST, so a brand-new contact's first burst runs
+  // this concurrently N times. The DB unique index lets one insert win; every
+  // loser must resolve to that winner, never drop its message. A single
+  // find→insert→re-select-once was lossy (a losing insert can fail with a
+  // non-23505 error, or the one-shot re-select can miss → return null →
+  // dropped message). Retry find→insert so losers re-resolve on the next pass.
+  const MAX_ATTEMPTS = 4
+  let lastError: unknown = null
 
-  if (!findError && existing) {
-    // Keep the conversation tagged with the number it's currently on, so
-    // replies go out from the same line the customer reached.
-    if (whatsappConfigId && existing.whatsapp_config_id !== whatsappConfigId) {
-      await supabaseAdmin()
-        .from('conversations')
-        .update({ whatsapp_config_id: whatsappConfigId })
-        .eq('id', existing.id)
-      existing.whatsapp_config_id = whatsappConfigId
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const existing = await findConversation(accountId, contactId)
+    if (existing) {
+      return { conversation: await retagConversationNumber(existing, whatsappConfigId), created: false }
     }
-    return { conversation: existing, created: false }
+
+    const { data: newConv, error: createError } = await supabaseAdmin()
+      .from('conversations')
+      .insert({
+        account_id: accountId,
+        user_id: configOwnerUserId,
+        contact_id: contactId,
+        whatsapp_config_id: whatsappConfigId ?? null,
+      })
+      .select()
+      .single()
+
+    if (!createError) return { conversation: newConv, created: true }
+    lastError = createError
   }
 
-  const { data: newConv, error: createError } = await supabaseAdmin()
-    .from('conversations')
-    .insert({
-      account_id: accountId,
-      user_id: configOwnerUserId,
-      contact_id: contactId,
-      whatsapp_config_id: whatsappConfigId ?? null,
-    })
-    .select()
-    .single()
-
-  if (createError) {
-    console.error('Error creating conversation:', createError)
-    return null
+  const raced = await findConversation(accountId, contactId)
+  if (raced) {
+    return { conversation: await retagConversationNumber(raced, whatsappConfigId), created: false }
   }
-
-  return { conversation: newConv, created: true }
+  console.error('Error creating conversation (retries exhausted):', lastError)
+  return null
 }
