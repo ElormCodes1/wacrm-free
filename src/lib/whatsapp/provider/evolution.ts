@@ -161,6 +161,10 @@ export async function createInstance(
     instanceName,
     integration: 'WHATSAPP-BAILEYS',
     qrcode: true,
+    // Required for status@broadcast traffic: Baileys' shouldIgnoreJid drops
+    // ALL broadcast JIDs when readStatus is false, which kills both viewing
+    // contacts' statuses AND receiving view receipts on our own statuses.
+    readStatus: true,
   }
   if (number) body.number = number
   if (webhook) {
