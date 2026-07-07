@@ -64,13 +64,13 @@ interface GroupDetail {
 export function GroupInfoPanel({
   groupId,
   groupName,
-  onNameResolved,
+  onResolved,
 }: {
   groupId: string;
   groupName: string;
-  /** Fired when the live group subject is learned, so the header + list can
-   *  update from the raw id fallback without a reload. */
-  onNameResolved?: (name: string) => void;
+  /** Fired when the live group subject / picture is learned, so the header,
+   *  list and sidebar avatar update without a reload. */
+  onResolved?: (update: { name?: string; avatarUrl?: string | null }) => void;
 }) {
   const [group, setGroup] = useState<GroupDetail | null>(null);
   const [amOwner, setAmOwner] = useState(false);
@@ -96,14 +96,17 @@ export function GroupInfoPanel({
         const subject = (data.group.subject as string | null)?.trim();
         setName(subject || groupName);
         setDesc(data.group.description ?? "");
-        if (subject && subject !== groupName) onNameResolved?.(subject);
+        const update: { name?: string; avatarUrl?: string | null } = {};
+        if (subject && subject !== groupName) update.name = subject;
+        if (data.avatarUrl) update.avatarUrl = data.avatarUrl as string;
+        if (update.name || update.avatarUrl) onResolved?.(update);
       }
     } catch {
       /* leave the placeholder */
     } finally {
       setLoading(false);
     }
-  }, [groupId, groupName, onNameResolved]);
+  }, [groupId, groupName, onResolved]);
 
   useEffect(() => {
     load();

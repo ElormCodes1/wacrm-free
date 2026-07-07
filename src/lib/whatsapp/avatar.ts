@@ -66,6 +66,43 @@ export async function syncContactAvatar(
 }
 
 /**
+ * Store a group's picture on the group contact. The group subject-picture
+ * URL is already known (from group metadata), so we just download + re-host
+ * it in `chat-media` (WhatsApp CDN URLs expire) and set `avatar_url`.
+ * Returns the stored public URL, or null. Best-effort — never throws.
+ */
+export async function storeGroupAvatar(
+  db: SupabaseClient,
+  contactId: string,
+  pictureUrl: string | null | undefined,
+): Promise<string | null> {
+  try {
+    if (!pictureUrl) return null
+    const resp = await fetch(pictureUrl)
+    if (!resp.ok) return null
+    const buffer = Buffer.from(await resp.arrayBuffer())
+    const mime = resp.headers.get('content-type') || 'image/jpeg'
+
+    const path = `avatars/${contactId}.jpg`
+    const { error: upErr } = await db.storage
+      .from('chat-media')
+      .upload(path, buffer, { contentType: mime, upsert: true })
+    if (upErr) return null
+
+    const { data } = db.storage.from('chat-media').getPublicUrl(path)
+    const publicUrl = `${data.publicUrl}?v=${Date.now()}`
+    const { error: updErr } = await db
+      .from('contacts')
+      .update({ avatar_url: publicUrl, updated_at: new Date().toISOString() })
+      .eq('id', contactId)
+    if (updErr) return null
+    return publicUrl
+  } catch {
+    return null
+  }
+}
+
+/**
  * Enrich a contact with their WhatsApp "about" text and — if they're a
  * business — their business profile (category, website, hours). Best-effort.
  */

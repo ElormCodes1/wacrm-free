@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
 import {
   fetchGroupDetail,
   updateGroupSubject,
@@ -11,6 +12,14 @@ import {
   type GroupSettingAction,
 } from '@/lib/whatsapp/provider/evolution'
 import { instanceForGroup, groupJidFromId } from '@/lib/whatsapp/resolve-group'
+import { storeGroupAvatar } from '@/lib/whatsapp/avatar'
+
+function admin() {
+  return createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  )
+}
 
 const SETTINGS: GroupSettingAction[] = [
   'announcement',
@@ -63,6 +72,21 @@ export async function GET(
         .neq('name', group.subject.trim())
     }
 
+    // Group picture → avatar_url (re-hosted; WhatsApp CDN URLs expire).
+    // Only download when the group has a picture and none is stored yet.
+    const digits = groupId.replace(/\D/g, '')
+    const { data: gc } = await c.supabase
+      .from('contacts')
+      .select('id, avatar_url')
+      .eq('account_id', c.accountId)
+      .eq('is_group', true)
+      .eq('phone', digits)
+      .maybeSingle()
+    let avatarUrl = (gc?.avatar_url as string | null) ?? null
+    if (gc?.id && group.pictureUrl && !avatarUrl) {
+      avatarUrl = await storeGroupAvatar(admin(), gc.id as string, group.pictureUrl)
+    }
+
     // Owner detection — match the connected number to its participant. Only
     // the group's creator (superadmin === this number) may manage members.
     const inst = await fetchInstance(instanceName)
@@ -94,6 +118,7 @@ export async function GET(
     return NextResponse.json({
       group: { ...group, participants },
       amOwner,
+      avatarUrl,
     })
   } catch (e) {
     const m = e instanceof Error ? e.message : 'Internal server error'

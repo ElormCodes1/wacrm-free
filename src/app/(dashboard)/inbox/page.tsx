@@ -436,20 +436,20 @@ export default function InboxPage() {
     [deepLinkConvId, activeConversation?.id]
   );
 
-  // When the Group Info panel learns a group's real subject, update the
-  // open contact (thread header + sidebar) and its list row so the raw-id
-  // "Group" fallback is replaced live, no reload needed.
-  const handleGroupNameResolved = useCallback(
-    (name: string) => {
-      setActiveContact((c) =>
-        c && c.is_group && c.name !== name ? { ...c, name } : c,
-      );
+  // When the Group Info panel learns a group's real subject / picture,
+  // update the open contact (thread header + sidebar avatar) and its list
+  // row so the raw-id "Group" fallback + missing icon fix live, no reload.
+  const handleGroupResolved = useCallback(
+    (update: { name?: string; avatarUrl?: string | null }) => {
+      const patch: Partial<Contact> = {};
+      if (update.name) patch.name = update.name;
+      if (update.avatarUrl) patch.avatar_url = update.avatarUrl;
+      if (patch.name === undefined && patch.avatar_url === undefined) return;
+      setActiveContact((c) => (c && c.is_group ? { ...c, ...patch } : c));
       setConversations((prev) =>
         prev.map((cv) =>
-          cv.id === activeConversation?.id &&
-          cv.contact?.is_group &&
-          cv.contact.name !== name
-            ? { ...cv, contact: { ...cv.contact, name } }
+          cv.id === activeConversation?.id && cv.contact?.is_group
+            ? { ...cv, contact: { ...cv.contact, ...patch } }
             : cv,
         ),
       );
@@ -645,7 +645,7 @@ export default function InboxPage() {
           <div className="hidden lg:block">
             <ContactSidebar
               contact={activeContact}
-              onGroupNameResolved={handleGroupNameResolved}
+              onGroupResolved={handleGroupResolved}
             />
           </div>
         )}
