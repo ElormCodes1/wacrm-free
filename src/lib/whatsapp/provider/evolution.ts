@@ -927,6 +927,284 @@ export async function fetchGroupInfo(
   }
 }
 
+// ============================================================
+// Group management — full admin surface (/group/*). All group-scoped
+// endpoints take the group JID as a ?groupJid= query param; POST bodies
+// additionally carry it where Evolution's DTO expects it.
+// ============================================================
+
+export interface GroupParticipant {
+  /** Participant JID (phone@s.whatsapp.net or an @lid). */
+  id: string
+  /** Digits extracted from the JID (best-effort; empty for bare LIDs). */
+  phone: string
+  admin: 'admin' | 'superadmin' | null
+}
+
+export interface GroupDetail {
+  id: string
+  subject: string | null
+  description: string | null
+  pictureUrl: string | null
+  size: number | null
+  owner: string | null
+  /** announcement-only: only admins can send. */
+  announce: boolean
+  /** locked info: only admins can edit subject/description/picture. */
+  restrict: boolean
+  participants: GroupParticipant[]
+}
+
+export interface GroupSummary {
+  id: string
+  subject: string | null
+  pictureUrl: string | null
+  size: number | null
+}
+
+function groupPath(
+  instanceName: string,
+  endpoint: string,
+  groupJid?: string,
+): string {
+  const base = `/group/${endpoint}/${encodeURIComponent(instanceName)}`
+  return groupJid ? `${base}?groupJid=${encodeURIComponent(groupJid)}` : base
+}
+
+function participantsFrom(raw: unknown): GroupParticipant[] {
+  if (!Array.isArray(raw)) return []
+  return raw.map((p) => {
+    const rec = (p ?? {}) as Record<string, unknown>
+    const id = String(rec.id ?? '')
+    return {
+      id,
+      phone: jidToPhone(id),
+      admin: (rec.admin as 'admin' | 'superadmin' | null) ?? null,
+    }
+  })
+}
+
+/** Full group detail incl. participants, admin roles, and settings. */
+export async function fetchGroupDetail(
+  instanceName: string,
+  groupJid: string,
+): Promise<GroupDetail | null> {
+  try {
+    const data = await evolutionFetch<Record<string, unknown>>(
+      groupPath(instanceName, 'findGroupInfos', groupJid),
+      { method: 'GET' },
+    )
+    if (!data) return null
+    return {
+      id: (data.id as string) ?? groupJid,
+      subject: (data.subject as string) ?? null,
+      description: (data.desc as string) ?? null,
+      pictureUrl: (data.pictureUrl as string) ?? null,
+      size: (data.size as number) ?? null,
+      owner: (data.owner as string) ?? null,
+      announce: data.announce === true,
+      restrict: data.restrict === true,
+      participants: participantsFrom(data.participants),
+    }
+  } catch {
+    return null
+  }
+}
+
+/** Every group the number belongs to (optionally with participants). */
+export async function fetchAllGroups(
+  instanceName: string,
+  getParticipants = false,
+): Promise<GroupSummary[]> {
+  try {
+    const data = await evolutionFetch<unknown>(
+      `/group/fetchAllGroups/${encodeURIComponent(instanceName)}?getParticipants=${getParticipants}`,
+      { method: 'GET' },
+    )
+    if (!Array.isArray(data)) return []
+    return data.map((g) => {
+      const rec = (g ?? {}) as Record<string, unknown>
+      return {
+        id: (rec.id as string) ?? '',
+        subject: (rec.subject as string) ?? null,
+        pictureUrl: (rec.pictureUrl as string) ?? null,
+        size: (rec.size as number) ?? null,
+      }
+    })
+  } catch {
+    return []
+  }
+}
+
+/** Create a group. participants = E.164 digits. Returns the new group JID. */
+export async function createGroup(args: {
+  instanceName: string
+  subject: string
+  participants: string[]
+  description?: string
+}): Promise<{ groupJid: string }> {
+  const data = await evolutionFetch<Record<string, unknown>>(
+    `/group/create/${encodeURIComponent(args.instanceName)}`,
+    {
+      method: 'POST',
+      body: {
+        subject: args.subject,
+        participants: args.participants,
+        ...(args.description ? { description: args.description } : {}),
+      },
+    },
+  )
+  return { groupJid: String(data.id ?? data.groupJid ?? '') }
+}
+
+export async function updateGroupSubject(
+  instanceName: string,
+  groupJid: string,
+  subject: string,
+): Promise<void> {
+  await evolutionFetch(groupPath(instanceName, 'updateGroupSubject', groupJid), {
+    method: 'POST',
+    body: { groupJid, subject },
+  })
+}
+
+export async function updateGroupDescription(
+  instanceName: string,
+  groupJid: string,
+  description: string,
+): Promise<void> {
+  await evolutionFetch(
+    groupPath(instanceName, 'updateGroupDescription', groupJid),
+    { method: 'POST', body: { groupJid, description } },
+  )
+}
+
+/** image = public URL or base64. */
+export async function updateGroupPicture(
+  instanceName: string,
+  groupJid: string,
+  image: string,
+): Promise<void> {
+  await evolutionFetch(groupPath(instanceName, 'updateGroupPicture', groupJid), {
+    method: 'POST',
+    body: { groupJid, image },
+  })
+}
+
+export type GroupParticipantAction = 'add' | 'remove' | 'promote' | 'demote'
+
+export async function updateGroupParticipants(
+  instanceName: string,
+  groupJid: string,
+  action: GroupParticipantAction,
+  participants: string[],
+): Promise<void> {
+  await evolutionFetch(groupPath(instanceName, 'updateParticipant', groupJid), {
+    method: 'POST',
+    body: { groupJid, action, participants },
+  })
+}
+
+export type GroupSettingAction =
+  | 'announcement'
+  | 'not_announcement'
+  | 'locked'
+  | 'unlocked'
+
+export async function updateGroupSetting(
+  instanceName: string,
+  groupJid: string,
+  action: GroupSettingAction,
+): Promise<void> {
+  await evolutionFetch(groupPath(instanceName, 'updateSetting', groupJid), {
+    method: 'POST',
+    body: { groupJid, action },
+  })
+}
+
+export async function toggleGroupEphemeral(
+  instanceName: string,
+  groupJid: string,
+  expiration: 0 | 86400 | 604800 | 7776000,
+): Promise<void> {
+  await evolutionFetch(groupPath(instanceName, 'toggleEphemeral', groupJid), {
+    method: 'POST',
+    body: { groupJid, expiration },
+  })
+}
+
+export interface GroupInvite {
+  code: string
+  url: string
+}
+
+function inviteFrom(data: Record<string, unknown>): GroupInvite {
+  const code = String(data.inviteCode ?? data.code ?? '')
+  const url =
+    (data.inviteUrl as string) ??
+    (code ? `https://chat.whatsapp.com/${code}` : '')
+  return { code, url }
+}
+
+export async function fetchGroupInviteCode(
+  instanceName: string,
+  groupJid: string,
+): Promise<GroupInvite | null> {
+  try {
+    const data = await evolutionFetch<Record<string, unknown>>(
+      groupPath(instanceName, 'inviteCode', groupJid),
+      { method: 'GET' },
+    )
+    return inviteFrom(data)
+  } catch {
+    return null
+  }
+}
+
+export async function revokeGroupInviteCode(
+  instanceName: string,
+  groupJid: string,
+): Promise<GroupInvite | null> {
+  try {
+    const data = await evolutionFetch<Record<string, unknown>>(
+      groupPath(instanceName, 'revokeInviteCode', groupJid),
+      { method: 'POST', body: { groupJid } },
+    )
+    return inviteFrom(data)
+  } catch {
+    return null
+  }
+}
+
+/** DM the group invite link to numbers (E.164 digits). */
+export async function sendGroupInvite(args: {
+  instanceName: string
+  groupJid: string
+  numbers: string[]
+  description?: string
+}): Promise<void> {
+  await evolutionFetch(
+    `/group/sendInvite/${encodeURIComponent(args.instanceName)}`,
+    {
+      method: 'POST',
+      body: {
+        groupJid: args.groupJid,
+        numbers: args.numbers,
+        description: args.description ?? '',
+      },
+    },
+  )
+}
+
+export async function leaveGroup(
+  instanceName: string,
+  groupJid: string,
+): Promise<void> {
+  await evolutionFetch(groupPath(instanceName, 'leaveGroup', groupJid), {
+    method: 'DELETE',
+  })
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function findChats(instanceName: string): Promise<any[]> {
   try {

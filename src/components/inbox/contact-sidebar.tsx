@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { GroupInfoPanel } from "./group-info-panel";
 
 interface ContactSidebarProps {
   contact: Contact | null;
@@ -272,6 +273,15 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
             )}
           </div>
 
+          {/* Groups get the Group Info panel in place of phone/tags/deals. */}
+          {contact.is_group && (
+            <div className="mt-4">
+              <GroupInfoPanel groupId={contact.phone} groupName={displayName} />
+            </div>
+          )}
+
+          {!contact.is_group && (
+            <>
           {/* Phone */}
           <div className="mt-4 space-y-2">
             <button
@@ -467,6 +477,8 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
               )}
             </div>
           </div>
+            </>
+          )}
 
           {/* Divider */}
           <div className="my-4 border-t border-border" />
