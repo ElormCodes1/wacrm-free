@@ -47,7 +47,15 @@ services:
       - wacrm-net
 
   evolution-api:
-    image: evoapicloud/evolution-api:latest
+    # Thin patched Evolution image (see evolution-patch/): the published
+    # evoapicloud/evolution-api:latest bundle patched to forward
+    # message-receipt.update (WhatsApp status view receipts, incl. the
+    # viewer's jid) as a webhook event, which stock Evolution discards.
+    # Powers "seen by" on your own statuses. Rebuild after pulling a newer
+    # base image to re-apply the patch.
+    build:
+      context: ./evolution-patch
+    image: wacrm-evolution-api:patched
     container_name: wacrm_evolution_api
     restart: unless-stopped
     depends_on:

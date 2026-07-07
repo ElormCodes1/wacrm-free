@@ -1,3 +1,10 @@
+export interface StatusViewer {
+  name: string;
+  phone: string;
+  avatar_url: string | null;
+  viewed_at: string;
+}
+
 export interface StatusItem {
   id: string;
   content_type: "text" | "image" | "video" | "audio";
@@ -6,6 +13,9 @@ export interface StatusItem {
   background_color: string | null;
   posted_at: string;
   viewed_at: string | null;
+  /** Populated only for our own statuses ("mine"). */
+  viewers?: StatusViewer[];
+  viewCount?: number;
 }
 
 export interface StatusGroup {

@@ -310,6 +310,9 @@ export const DEFAULT_WEBHOOK_EVENTS = [
   'CONNECTION_UPDATE',
   'MESSAGES_UPSERT',
   'MESSAGES_UPDATE',
+  // Status view receipts (who viewed our status). Requires the patched
+  // Evolution image — stock Evolution never emits this event.
+  'MESSAGE_RECEIPT_UPDATE',
   'SEND_MESSAGE',
   'CONTACTS_UPSERT',
   'CHATS_UPSERT',

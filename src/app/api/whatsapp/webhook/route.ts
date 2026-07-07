@@ -131,6 +131,10 @@ async function processEvolutionEvent(body: EvolutionWebhookBody) {
       }
       break
 
+    case 'message-receipt.update':
+      await handleReceiptUpdate(instance, asArray(body.data))
+      break
+
     case 'connection.update':
       await handleConnectionUpdate(instance, body.data)
       break
@@ -576,6 +580,73 @@ async function handleStatusBroadcast(instanceName: string, data: any) {
       { onConflict: 'account_id,message_id', ignoreDuplicates: true },
     )
   if (error) console.error('[webhook] status insert failed:', error.message)
+}
+
+// ============================================================
+// Status view receipts (message-receipt.update)
+//
+// "Seen by" for our own statuses. Needs the patched Evolution image,
+// which forwards message-receipt.update with the viewer's jid. Each
+// receipt on a status@broadcast message our account posted becomes a
+// status_views row.
+// ============================================================
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function handleReceiptUpdate(instanceName: string, updates: any[]) {
+  const statusReceipts = updates.filter(
+    (u) => u?.key?.remoteJid === 'status@broadcast' && u?.receipt?.userJid,
+  )
+  if (statusReceipts.length === 0) return
+
+  const config = await resolveConfig(instanceName)
+  if (!config) return
+
+  for (const u of statusReceipts) {
+    const messageId: string | undefined = u.key?.id
+    if (!messageId) continue
+
+    // Only track views for OUR own posted statuses.
+    const { data: status } = await supabaseAdmin()
+      .from('status_updates')
+      .select('id')
+      .eq('account_id', config.account_id)
+      .eq('message_id', messageId)
+      .eq('is_mine', true)
+      .maybeSingle()
+    if (!status) continue
+
+    const viewerJid =
+      (await resolveJid(instanceName, {
+        remoteJid: u.receipt.userJid,
+        remoteJidAlt: u.receipt.userJidAlt,
+      })) || u.receipt.userJid
+    const viewerPhone = normalizePhone(jidToPhone(viewerJid))
+    if (!viewerPhone) continue
+
+    const existing = await findExistingContact(supabaseAdmin(), config.account_id, viewerPhone)
+    const viewedTs =
+      u.receipt.readTimestamp || u.receipt.playedTimestamp || u.receipt.receiptTimestamp
+    const viewedAt =
+      typeof viewedTs === 'number'
+        ? new Date(viewedTs * 1000).toISOString()
+        : new Date().toISOString()
+
+    const { error } = await supabaseAdmin()
+      .from('status_views')
+      .upsert(
+        {
+          account_id: config.account_id,
+          status_update_id: status.id,
+          message_id: messageId,
+          viewer_contact_id: existing?.id ?? null,
+          viewer_phone: viewerPhone,
+          viewer_name: existing?.name ?? null,
+          viewed_at: viewedAt,
+        },
+        { onConflict: 'account_id,message_id,viewer_phone', ignoreDuplicates: true },
+      )
+    if (error) console.error('[webhook] status view insert failed:', error.message)
+  }
 }
 
 async function resolveConfig(

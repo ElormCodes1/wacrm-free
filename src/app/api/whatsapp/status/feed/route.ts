@@ -8,6 +8,13 @@ import { createClient } from '@/lib/supabase/server'
  * Status page: `mine` (our own posts) + `contacts` (one entry per poster,
  * unseen first). Read via the user session — RLS scopes to the account.
  */
+export interface StatusViewer {
+  name: string
+  phone: string
+  avatar_url: string | null
+  viewed_at: string
+}
+
 export interface StatusItem {
   id: string
   content_type: 'text' | 'image' | 'video' | 'audio'
@@ -16,6 +23,8 @@ export interface StatusItem {
   background_color: string | null
   posted_at: string
   viewed_at: string | null
+  viewers?: StatusViewer[]
+  viewCount?: number
 }
 
 export interface StatusGroup {
@@ -110,6 +119,37 @@ export async function GET() {
     if (a.hasUnviewed !== b.hasUnviewed) return a.hasUnviewed ? -1 : 1
     return b.latestPostedAt.localeCompare(a.latestPostedAt)
   })
+
+  // Attach "seen by" viewers to our own statuses.
+  if (mine.length > 0) {
+    const mineIds = mine.map((m) => m.id)
+    const { data: views } = await supabase
+      .from('status_views')
+      .select(
+        'status_update_id, viewer_phone, viewer_name, viewed_at, contact:contacts!viewer_contact_id(name, avatar_url)',
+      )
+      .eq('account_id', accountId)
+      .in('status_update_id', mineIds)
+      .order('viewed_at', { ascending: false })
+
+    const byStatus = new Map<string, StatusViewer[]>()
+    for (const v of views ?? []) {
+      const c = pickContact(v)
+      const viewer: StatusViewer = {
+        name: c?.name || v.viewer_name || v.viewer_phone,
+        phone: v.viewer_phone,
+        avatar_url: c?.avatar_url || null,
+        viewed_at: v.viewed_at,
+      }
+      const list = byStatus.get(v.status_update_id)
+      if (list) list.push(viewer)
+      else byStatus.set(v.status_update_id, [viewer])
+    }
+    for (const item of mine) {
+      item.viewers = byStatus.get(item.id) ?? []
+      item.viewCount = item.viewers.length
+    }
+  }
 
   return NextResponse.json({ mine, contacts })
 }

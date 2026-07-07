@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { X, ChevronLeft, ChevronRight } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, Eye } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import type { StatusItem } from "./types";
 
@@ -48,6 +48,7 @@ export function StoryViewer({
   const [groupIndex, setGroupIndex] = useState(startIndex);
   const [itemIndex, setItemIndex] = useState(0);
   const [progress, setProgress] = useState(0);
+  const [showViewers, setShowViewers] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const group = groups[groupIndex];
@@ -83,15 +84,17 @@ export function StoryViewer({
     });
   }, [groups]);
 
-  // Mark the current item viewed (once shown).
+  // Mark viewed + reset the "seen by" panel whenever the item changes.
   useEffect(() => {
+    setShowViewers(false);
     if (item && !group?.isMine && !item.viewed_at) onViewed(item.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupIndex, itemIndex]);
 
   // Auto-advance timer for image/text. Video drives its own progress.
+  // Paused while the "seen by" panel is open.
   useEffect(() => {
-    if (!item || item.content_type === "video") return;
+    if (!item || item.content_type === "video" || showViewers) return;
     const start = performance.now();
     let raf = 0;
     const tick = (now: number) => {
@@ -103,7 +106,15 @@ export function StoryViewer({
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupIndex, itemIndex]);
+  }, [groupIndex, itemIndex, showViewers]);
+
+  // Pause/resume the video when the "seen by" panel toggles.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (showViewers) v.pause();
+    else v.play().catch(() => {});
+  }, [showViewers]);
 
   // Keyboard navigation.
   useEffect(() => {
@@ -219,6 +230,62 @@ export function StoryViewer({
         >
           <ChevronRight className="mr-2 h-6 w-6 text-white/0 group-hover:text-white/50" />
         </button>
+
+        {/* Seen-by (own statuses only) */}
+        {group.isMine && (
+          <button
+            type="button"
+            onClick={() => setShowViewers(true)}
+            className="absolute inset-x-0 bottom-0 z-30 flex items-center justify-center gap-1.5 bg-gradient-to-t from-black/70 to-transparent py-4 text-sm font-medium text-white"
+          >
+            <Eye className="h-4 w-4" />
+            Seen by {item.viewCount ?? 0}
+          </button>
+        )}
+
+        {group.isMine && showViewers && (
+          <div className="absolute inset-0 z-40 flex flex-col justify-end">
+            <button
+              type="button"
+              aria-label="Close viewers"
+              className="flex-1"
+              onClick={() => setShowViewers(false)}
+            />
+            <div className="max-h-[55%] overflow-y-auto rounded-t-2xl bg-background p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-sm font-medium">
+                  Viewed by {item.viewers?.length ?? 0}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowViewers(false)}
+                  aria-label="Close"
+                  className="rounded-full p-1 text-muted-foreground hover:bg-muted"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              {item.viewers && item.viewers.length > 0 ? (
+                <ul className="space-y-2">
+                  {item.viewers.map((v) => (
+                    <li key={v.phone} className="flex items-center gap-3">
+                      <Avatar size="sm">
+                        {v.avatar_url && <AvatarImage src={v.avatar_url} alt={v.name} />}
+                        <AvatarFallback>{initials(v.name)}</AvatarFallback>
+                      </Avatar>
+                      <span className="flex-1 truncate text-sm">{v.name}</span>
+                      <span className="text-xs text-muted-foreground">{timeAgo(v.viewed_at)}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  No views yet
+                </p>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
