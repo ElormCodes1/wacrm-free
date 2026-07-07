@@ -31,16 +31,20 @@ interface MessageBubbleProps {
   onToggleReaction?: (emoji: string) => void;
 }
 
+// Delivery ticks. These only render on outbound (agent) bubbles, which
+// sit on the green `bubble-out` fill — so the un-read states use the
+// bubble's own foreground at low opacity (like WhatsApp's faint grey
+// ticks) and "read" flips to the signature blue double-tick.
 function StatusIcon({ status }: { status: Message["status"] }) {
   switch (status) {
     case "sending":
-      return <Clock className="h-3 w-3 text-muted-foreground" />;
+      return <Clock className="h-3 w-3 text-bubble-out-foreground/50" />;
     case "sent":
-      return <Check className="h-3 w-3 text-muted-foreground" />;
+      return <Check className="h-3.5 w-3.5 text-bubble-out-foreground/60" />;
     case "delivered":
-      return <CheckCheck className="h-3 w-3 text-muted-foreground" />;
+      return <CheckCheck className="h-3.5 w-3.5 text-bubble-out-foreground/60" />;
     case "read":
-      return <CheckCheck className="h-3 w-3 text-blue-400" />;
+      return <CheckCheck className="h-3.5 w-3.5 text-tick-read" />;
     case "failed":
       return <XCircle className="h-3 w-3 text-red-400" />;
     default:
@@ -301,10 +305,22 @@ export function MessageBubble({
     >
       <div
         className={cn(
-          "relative rounded-2xl px-3 py-2",
+          // WhatsApp bubble: ~7.5px radius, a squared top corner on the
+          // sender side, a small tail (the ::after triangle) at that
+          // corner, and a soft lift shadow.
+          "relative rounded-lg px-2.5 py-1.5 shadow-sm",
+          "after:absolute after:top-0 after:h-0 after:w-0 after:border-solid after:content-['']",
           isAgent
-            ? "rounded-br-md bg-primary text-primary-foreground"
-            : "rounded-bl-md bg-muted text-foreground",
+            ? [
+                "rounded-tr-none bg-bubble-out text-bubble-out-foreground",
+                // right-pointing tail in the bubble colour
+                "after:right-[-8px] after:border-t-[8px] after:border-r-[8px] after:border-t-bubble-out after:border-r-transparent",
+              ]
+            : [
+                "rounded-tl-none bg-bubble-in text-bubble-in-foreground",
+                // left-pointing tail in the bubble colour
+                "after:left-[-8px] after:border-t-[8px] after:border-l-[8px] after:border-t-bubble-in after:border-l-transparent",
+              ],
         )}
       >
         {reply && (
@@ -315,7 +331,7 @@ export function MessageBubble({
           />
         )}
         {!isAgent && message.author_name && (
-          <div className="mb-0.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+          <div className="mb-0.5 text-xs font-semibold text-primary">
             {message.author_name}
           </div>
         )}
@@ -329,11 +345,12 @@ export function MessageBubble({
           <span
             className={cn(
               "text-[10px]",
-              // Outbound bubbles sit on the primary fill, so the
-              // timestamp must read against that (not the neutral
-              // foreground) — otherwise it goes low-contrast in light
-              // mode. Inbound bubbles use the muted surface.
-              isAgent ? "text-primary-foreground/70" : "text-muted-foreground",
+              // Outbound bubbles sit on the green `bubble-out` fill, so
+              // the timestamp reads against that at low opacity (like
+              // WhatsApp's faint meta text). Inbound uses muted.
+              isAgent
+                ? "text-bubble-out-foreground/60"
+                : "text-muted-foreground",
             )}
           >
             {message.edited_at && !message.deleted_at ? "edited · " : ""}

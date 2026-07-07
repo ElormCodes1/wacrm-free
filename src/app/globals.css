@@ -7,9 +7,13 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
+  --font-sans:
+    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Helvetica,
+    Arial, sans-serif;
   --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-heading:
+    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Helvetica,
+    Arial, sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -41,13 +45,24 @@
   --color-card: var(--card);
   /* Secondary card surface (tile / hover backgrounds) and the accent
    * extras the Settings redesign leans on. The raw --primary-* vars
-   * already exist per-accent below; these mappings expose them (and
-   * --card-2) as Tailwind utilities: bg-card-2, bg-primary-soft,
+   * already exist in the accent block below; these mappings expose them
+   * (and --card-2) as Tailwind utilities: bg-card-2, bg-primary-soft,
    * bg-primary-soft-2, hover:bg-primary-hover. */
   --color-card-2: var(--card-2);
   --color-primary-hover: var(--primary-hover);
   --color-primary-soft: var(--primary-soft);
   --color-primary-soft-2: var(--primary-soft-2);
+  /* WhatsApp chat surfaces — the message thread. Exposed as
+   * bg-bubble-out, text-bubble-out-foreground, bg-bubble-in,
+   * text-tick-read, bg-positive (unread pill / FAB), bg-chat-wallpaper. */
+  --color-bubble-out: var(--bubble-out);
+  --color-bubble-out-foreground: var(--bubble-out-foreground);
+  --color-bubble-in: var(--bubble-in);
+  --color-bubble-in-foreground: var(--bubble-in-foreground);
+  --color-tick-read: var(--tick-read);
+  --color-positive: var(--positive);
+  --color-positive-foreground: var(--positive-foreground);
+  --color-chat-wallpaper: var(--chat-wallpaper);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -58,163 +73,127 @@
 }
 
 /* ============================================================
- * THEMING — two orthogonal dimensions
+ * THEMING — WhatsApp design language
  *
- *   1. MODE   (light / dark)  → neutral surfaces. Selected with
- *      `document.documentElement.dataset.mode`. Defaults to dark.
- *   2. ACCENT (violet / …)    → the primary color only. Selected
- *      with `document.documentElement.dataset.theme`.
+ * The app adopts WhatsApp Web's visual identity as its single
+ * canonical look. One accent (WhatsApp teal #00A884) drives every
+ * primary surface; bright #25D366 is reserved for send / FAB /
+ * unread ("--positive") and the read-tick blue #53BDEB lives in
+ * "--tick-read".
  *
- * The two compose: any accent works in either mode. Neutral
- * tokens (background / card / border / muted / sidebar surfaces /
- * neutral charts / radius) live in the MODE blocks below; accent
- * tokens (--primary*, --ring, --chart-1, --sidebar-primary*,
- * --sidebar-ring) live in the ACCENT blocks. They set disjoint
- * variables, so cascade order between them doesn't matter.
+ * Only MODE (light / dark) is user-switchable, via
+ * `document.documentElement.dataset.mode` (defaults to dark). The
+ * neutral surfaces are WhatsApp's greys: dark #0B141A / #111B21 /
+ * #202C33, light #F0F2F5 / #FFFFFF with the beige chat wallpaper
+ * #EFEAE2 behind the message thread.
  *
- * `:root` carries the dark-mode + violet defaults so a visitor
- * renders correctly before JS runs; the boot script in
- * layout.tsx replays the saved mode + accent before first paint.
+ * `:root` carries the dark-mode defaults so a visitor renders
+ * correctly before JS runs; the boot script in layout.tsx replays
+ * the saved mode before first paint. The accent block is also
+ * pinned to `:root` (and `html[data-theme="whatsapp"]`) so it
+ * applies regardless of any legacy data-theme value.
  *
  * The three `--primary-*` extras (hover / soft / soft-2) feed
  * hovered primary buttons and tinted-primary surfaces (sidebar
  * active pill, validation badges).
  *
- * Token shapes come straight from the design handoff at
- * project/Color Themes.html — change one, change the other.
+ * All values are OKLCH conversions of the WhatsApp hex palette —
+ * see project scratchpad whatsapp-design-system.md for the source.
  * ============================================================ */
 
 /* ---- MODE: neutral surfaces ---- */
 
 :root,
 html[data-mode="dark"] {
-  --background: oklch(0.13 0.01 260);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.18 0.01 260);
-  --card-2: oklch(0.205 0.01 260);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.18 0.01 260);
-  --popover-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.22 0.01 260);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.22 0.01 260);
-  --muted-foreground: oklch(0.65 0.01 260);
-  --accent: oklch(0.22 0.01 260);
-  --accent-foreground: oklch(0.985 0 0);
+  --background: oklch(0.185 0.018 238.2); /* #0B141A */
+  --foreground: oklch(0.944 0.005 228.8); /* #E9EDEF */
+  --card: oklch(0.215 0.019 235.1); /* #111B21 */
+  --card-2: oklch(0.285 0.021 234.1); /* #202C33 */
+  --card-foreground: oklch(0.944 0.005 228.8);
+  --popover: oklch(0.285 0.021 234.1); /* #202C33 — elevated menus */
+  --popover-foreground: oklch(0.944 0.005 228.8);
+  --secondary: oklch(0.285 0.021 234.1);
+  --secondary-foreground: oklch(0.944 0.005 228.8);
+  --muted: oklch(0.285 0.021 234.1);
+  --muted-foreground: oklch(0.664 0.024 235.2); /* #8696A0 */
+  --accent: oklch(0.285 0.021 234.1);
+  --accent-foreground: oklch(0.944 0.005 228.8);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.28 0.01 260);
-  --input: oklch(0.28 0.01 260);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  --border: oklch(0.335 0.025 234.9); /* #2A3942 */
+  --input: oklch(0.335 0.025 234.9);
+  --chart-2: oklch(0.755 0.117 229.7); /* WA blue */
+  --chart-3: oklch(0.745 0.16 65); /* warm */
+  --chart-4: oklch(0.62 0.16 300); /* violet */
+  --chart-5: oklch(0.645 0.22 16); /* rose */
   --radius: 0.625rem;
-  --sidebar: oklch(0.16 0.01 260);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.22 0.01 260);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(0.28 0.01 260);
+  --sidebar: oklch(0.215 0.019 235.1); /* #111B21 */
+  --sidebar-foreground: oklch(0.944 0.005 228.8);
+  --sidebar-accent: oklch(0.285 0.021 234.1);
+  --sidebar-accent-foreground: oklch(0.944 0.005 228.8);
+  --sidebar-border: oklch(0.335 0.025 234.9);
+  /* chat surfaces */
+  --bubble-out: oklch(0.424 0.08 174.4); /* #005C4B */
+  --bubble-out-foreground: oklch(0.944 0.005 228.8);
+  --bubble-in: oklch(0.285 0.021 234.1); /* #202C33 */
+  --bubble-in-foreground: oklch(0.944 0.005 228.8);
+  --tick-read: oklch(0.755 0.117 229.7); /* #53BDEB */
+  --positive: oklch(0.761 0.201 149.7); /* #25D366 */
+  --positive-foreground: oklch(0.185 0.018 238.2);
+  --chat-wallpaper: oklch(0.185 0.018 238.2); /* #0B141A */
 }
 
 html[data-mode="light"] {
-  --background: oklch(0.99 0.002 260);
-  --foreground: oklch(0.21 0.01 260);
-  --card: oklch(1 0 0);
-  --card-2: oklch(0.985 0.002 260);
-  --card-foreground: oklch(0.21 0.01 260);
+  --background: oklch(0.96 0.005 258.3); /* #F0F2F5 app chrome */
+  --foreground: oklch(0.215 0.019 235.1); /* #111B21 */
+  --card: oklch(1 0 0); /* #FFFFFF */
+  --card-2: oklch(0.972 0.001 197.1); /* #F5F6F6 */
+  --card-foreground: oklch(0.215 0.019 235.1);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.21 0.01 260);
-  --secondary: oklch(0.967 0.003 260);
-  --secondary-foreground: oklch(0.25 0.01 260);
-  --muted: oklch(0.967 0.003 260);
-  --muted-foreground: oklch(0.52 0.015 260);
-  --accent: oklch(0.96 0.004 260);
-  --accent-foreground: oklch(0.25 0.01 260);
+  --popover-foreground: oklch(0.215 0.019 235.1);
+  --secondary: oklch(0.96 0.005 258.3); /* #F0F2F5 */
+  --secondary-foreground: oklch(0.32 0.012 235);
+  --muted: oklch(0.96 0.005 258.3);
+  --muted-foreground: oklch(0.559 0.025 233.7); /* #667781 */
+  --accent: oklch(0.96 0.005 258.3);
+  --accent-foreground: oklch(0.32 0.012 235);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0.004 260);
-  --input: oklch(0.922 0.004 260);
-  --chart-2: oklch(0.6 0.1 260);
-  --chart-3: oklch(0.7 0.06 260);
-  --chart-4: oklch(0.8 0.04 260);
-  --chart-5: oklch(0.87 0.03 260);
+  --border: oklch(0.944 0.005 228.8); /* #E9EDEF */
+  --input: oklch(0.944 0.005 228.8);
+  --chart-2: oklch(0.64 0.13 233.7); /* WA blue */
+  --chart-3: oklch(0.72 0.15 65); /* warm */
+  --chart-4: oklch(0.55 0.2 300); /* violet */
+  --chart-5: oklch(0.62 0.2 16); /* rose */
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0.002 260);
-  --sidebar-foreground: oklch(0.21 0.01 260);
-  --sidebar-accent: oklch(0.96 0.004 260);
-  --sidebar-accent-foreground: oklch(0.25 0.01 260);
-  --sidebar-border: oklch(0.922 0.004 260);
+  --sidebar: oklch(1 0 0); /* #FFFFFF */
+  --sidebar-foreground: oklch(0.215 0.019 235.1);
+  --sidebar-accent: oklch(0.96 0.005 258.3);
+  --sidebar-accent-foreground: oklch(0.32 0.012 235);
+  --sidebar-border: oklch(0.944 0.005 228.8);
+  /* chat surfaces */
+  --bubble-out: oklch(0.957 0.067 141.1); /* #D9FDD3 */
+  --bubble-out-foreground: oklch(0.215 0.019 235.1);
+  --bubble-in: oklch(1 0 0); /* #FFFFFF */
+  --bubble-in-foreground: oklch(0.215 0.019 235.1);
+  --tick-read: oklch(0.64 0.13 233.7); /* WA blue (deeper on light) */
+  --positive: oklch(0.761 0.201 149.7); /* #25D366 */
+  --positive-foreground: oklch(0.985 0 0);
+  --chat-wallpaper: oklch(0.939 0.012 79.8); /* #EFEAE2 beige */
 }
 
-/* ---- ACCENT: primary color ---- */
+/* ---- ACCENT: WhatsApp teal (single canonical accent) ---- */
 
 :root,
-html[data-theme="violet"] {
-  --primary: oklch(0.526 0.247 293);
+html[data-theme="whatsapp"] {
+  --primary: oklch(0.651 0.128 170.4); /* #00A884 */
   --primary-foreground: oklch(0.985 0 0);
-  --primary-hover: oklch(0.6 0.22 293);
-  --primary-soft: oklch(0.526 0.247 293 / 0.12);
-  --primary-soft-2: oklch(0.526 0.247 293 / 0.2);
-  --ring: oklch(0.526 0.247 293);
-  --chart-1: oklch(0.526 0.247 293);
-  --sidebar-primary: oklch(0.526 0.247 293);
+  --primary-hover: oklch(0.6 0.125 171);
+  --primary-soft: oklch(0.651 0.128 170.4 / 0.12);
+  --primary-soft-2: oklch(0.651 0.128 170.4 / 0.2);
+  --ring: oklch(0.651 0.128 170.4);
+  --chart-1: oklch(0.651 0.128 170.4);
+  --sidebar-primary: oklch(0.651 0.128 170.4);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-ring: oklch(0.526 0.247 293);
-}
-
-html[data-theme="emerald"] {
-  --primary: oklch(0.62 0.16 162);
-  --primary-foreground: oklch(0.16 0.02 162);
-  --primary-hover: oklch(0.68 0.15 162);
-  --primary-soft: oklch(0.62 0.16 162 / 0.12);
-  --primary-soft-2: oklch(0.62 0.16 162 / 0.22);
-  --ring: oklch(0.62 0.16 162);
-  --chart-1: oklch(0.62 0.16 162);
-  --chart-2: oklch(0.7 0.14 195);
-  --sidebar-primary: oklch(0.62 0.16 162);
-  --sidebar-primary-foreground: oklch(0.16 0.02 162);
-  --sidebar-ring: oklch(0.62 0.16 162);
-}
-
-html[data-theme="cobalt"] {
-  --primary: oklch(0.585 0.2 254);
-  --primary-foreground: oklch(0.985 0 0);
-  --primary-hover: oklch(0.66 0.18 254);
-  --primary-soft: oklch(0.585 0.2 254 / 0.12);
-  --primary-soft-2: oklch(0.585 0.2 254 / 0.22);
-  --ring: oklch(0.585 0.2 254);
-  --chart-1: oklch(0.585 0.2 254);
-  --chart-2: oklch(0.7 0.15 220);
-  --sidebar-primary: oklch(0.585 0.2 254);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-ring: oklch(0.585 0.2 254);
-}
-
-html[data-theme="amber"] {
-  --primary: oklch(0.745 0.16 65);
-  --primary-foreground: oklch(0.18 0.03 65);
-  --primary-hover: oklch(0.8 0.15 65);
-  --primary-soft: oklch(0.745 0.16 65 / 0.12);
-  --primary-soft-2: oklch(0.745 0.16 65 / 0.22);
-  --ring: oklch(0.745 0.16 65);
-  --chart-1: oklch(0.745 0.16 65);
-  --chart-2: oklch(0.7 0.15 35);
-  --sidebar-primary: oklch(0.745 0.16 65);
-  --sidebar-primary-foreground: oklch(0.18 0.03 65);
-  --sidebar-ring: oklch(0.745 0.16 65);
-}
-
-html[data-theme="rose"] {
-  --primary: oklch(0.645 0.22 16);
-  --primary-foreground: oklch(0.985 0 0);
-  --primary-hover: oklch(0.71 0.2 16);
-  --primary-soft: oklch(0.645 0.22 16 / 0.12);
-  --primary-soft-2: oklch(0.645 0.22 16 / 0.22);
-  --ring: oklch(0.645 0.22 16);
-  --chart-1: oklch(0.645 0.22 16);
-  --chart-2: oklch(0.7 0.18 340);
-  --sidebar-primary: oklch(0.645 0.22 16);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-ring: oklch(0.645 0.22 16);
+  --sidebar-ring: oklch(0.651 0.128 170.4);
 }
 
 @layer base {

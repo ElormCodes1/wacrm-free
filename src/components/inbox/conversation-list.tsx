@@ -448,12 +448,16 @@ function ConversationItem({
       })
     : "";
 
+  const unread = conversation.unread_count > 0;
+
   return (
     <button
       onClick={handleClick}
       className={cn(
-        "flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-muted/50",
-        isActive && "border-l-2 border-primary bg-muted/70"
+        // WhatsApp list row: full-width, dense, a plain bg highlight for
+        // the open thread (no accent rail) matching WhatsApp Web.
+        "flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-muted/50",
+        isActive && "bg-input hover:bg-input"
       )}
     >
       {/* Avatar */}
@@ -477,15 +481,27 @@ function ConversationItem({
           <span className="truncate text-sm font-medium text-foreground">
             {displayName}
           </span>
-          <span className="shrink-0 text-[10px] text-muted-foreground">{timeAgo}</span>
+          <span
+            className={cn(
+              "shrink-0 text-[10px]",
+              unread ? "font-medium text-primary" : "text-muted-foreground"
+            )}
+          >
+            {timeAgo}
+          </span>
         </div>
         <div className="mt-0.5 flex items-center justify-between gap-2">
-          <p className="truncate text-xs text-muted-foreground">
+          <p
+            className={cn(
+              "truncate text-xs",
+              unread ? "font-medium text-foreground" : "text-muted-foreground"
+            )}
+          >
             {conversation.last_message_text || "No messages yet"}
           </p>
           <div className="flex shrink-0 items-center gap-1.5">
-            {conversation.unread_count > 0 && (
-              <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+            {unread && (
+              <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-positive px-1 text-[10px] font-bold text-positive-foreground">
                 {conversation.unread_count}
               </span>
             )}

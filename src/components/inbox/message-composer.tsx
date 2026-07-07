@@ -446,7 +446,7 @@ export function MessageComposer({
   // ---- Render --------------------------------------------------------
 
   return (
-    <div className="border-t border-border bg-card p-3">
+    <div className="border-t border-border bg-secondary p-3">
       {replyTo && (
         <div className="mb-2">
           <ReplyQuote
@@ -626,7 +626,7 @@ export function MessageComposer({
             // The placeholder text also surfaces the read-only state.
             title={readOnly ? "Read-only — your role can't send messages" : undefined}
             className={cn(
-              "flex-1 resize-none rounded-xl border border-border bg-muted px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-primary/50",
+              "flex-1 resize-none rounded-lg border border-transparent bg-input px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-primary/40",
               readOnly && "cursor-not-allowed opacity-50"
             )}
           />
@@ -637,7 +637,7 @@ export function MessageComposer({
             gateReason="send messages"
             disabled={!text.trim() || sending}
             onClick={handleSend}
-            className="h-9 w-9 shrink-0 bg-primary p-0 hover:bg-primary/90 disabled:opacity-40"
+            className="h-10 w-10 shrink-0 rounded-full bg-primary p-0 text-primary-foreground hover:bg-primary-hover disabled:opacity-40"
           >
             <Send className="h-4 w-4" />
           </GatedButton>

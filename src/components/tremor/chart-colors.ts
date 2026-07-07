@@ -14,6 +14,15 @@
 export type ColorUtility = "bg" | "stroke" | "fill" | "text"
 
 export const chartColors = {
+  // WhatsApp teal — wired to the app's `--primary` token (not a fixed
+  // Tailwind palette step) so charts track the brand accent and adapt
+  // per mode. Listed first so default multi-series charts lead with it.
+  whatsapp: {
+    bg: "bg-primary",
+    stroke: "stroke-primary",
+    fill: "fill-primary",
+    text: "text-primary",
+  },
   blue: {
     bg: "bg-blue-500",
     stroke: "stroke-blue-500",
