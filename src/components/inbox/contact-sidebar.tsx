@@ -28,6 +28,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { GroupInfoPanel } from "./group-info-panel";
+import { contactDisplayName } from "@/lib/inbox/contact-name";
 
 interface ContactSidebarProps {
   contact: Contact | null;
@@ -245,7 +246,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     );
   }
 
-  const displayName = contact.name || contact.phone;
+  const displayName = contactDisplayName(contact);
   const initials = displayName.charAt(0).toUpperCase();
 
   return (

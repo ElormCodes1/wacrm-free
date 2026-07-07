@@ -49,6 +49,17 @@ export async function GET(
       return NextResponse.json({ error: 'WhatsApp not connected.' }, { status: 400 })
     const group = await fetchGroupDetail(instanceName, groupJidFromId(groupId))
     if (!group) return NextResponse.json({ error: 'Group not found' }, { status: 404 })
+    // Auto-heal the CRM group name from the live subject (WhatsApp is the
+    // source of truth) so the inbox never shows the raw group id.
+    if (group.subject?.trim()) {
+      await c.supabase
+        .from('contacts')
+        .update({ name: group.subject.trim(), updated_at: new Date().toISOString() })
+        .eq('account_id', c.accountId)
+        .eq('is_group', true)
+        .eq('phone', groupId.replace(/\D/g, ''))
+        .neq('name', group.subject.trim())
+    }
     return NextResponse.json({ group })
   } catch (e) {
     const m = e instanceof Error ? e.message : 'Internal server error'

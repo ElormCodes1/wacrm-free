@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { NewGroupButton } from "./new-group-button";
+import { contactDisplayName } from "@/lib/inbox/contact-name";
 
 interface ConversationListProps {
   activeConversationId: string | null;
@@ -554,7 +555,7 @@ function ConversationItem({
   onSelect,
 }: ConversationItemProps) {
   const contact = conversation.contact;
-  const displayName = contact?.name || contact?.phone || "Unknown";
+  const displayName = contactDisplayName(contact);
   const initials = displayName.charAt(0).toUpperCase();
 
   const handleClick = useCallback(() => {
