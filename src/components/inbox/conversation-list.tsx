@@ -52,6 +52,16 @@ const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = [
   { label: "Archived", value: "archived" },
 ];
 
+// Chat-type filter: individual contacts vs WhatsApp groups (a group is a
+// contact with is_group = true), or all.
+type ContactType = "all" | "individuals" | "groups";
+
+const CONTACT_TYPE_OPTIONS: { label: string; value: ContactType }[] = [
+  { label: "All chats", value: "all" },
+  { label: "Individuals", value: "individuals" },
+  { label: "Groups", value: "groups" },
+];
+
 export function ConversationList({
   activeConversationId,
   onSelect,
@@ -61,6 +71,7 @@ export function ConversationList({
 }: ConversationListProps) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<InboxFilter>("all");
+  const [contactType, setContactType] = useState<ContactType>("all");
   const [loading, setLoading] = useState(true);
   // Contact-based filters (issue #272). Tags use OR logic (a conversation
   // matches if its contact carries any selected tag), consistent with
@@ -168,6 +179,13 @@ export function ConversationList({
       result = result.filter((c) => c.status === filter);
     }
 
+    // Chat type — individual contacts vs groups.
+    if (contactType === "individuals") {
+      result = result.filter((c) => !c.contact?.is_group);
+    } else if (contactType === "groups") {
+      result = result.filter((c) => c.contact?.is_group);
+    }
+
     // Contact-based filters (tags via OR logic, exact company match).
     if (selectedTagIds.length > 0 || selectedCompany !== null) {
       result = result.filter((c) =>
@@ -189,7 +207,7 @@ export function ConversationList({
     }
 
     return result;
-  }, [conversations, filter, search, selectedTagIds, selectedCompany]);
+  }, [conversations, filter, contactType, search, selectedTagIds, selectedCompany]);
 
   const toggleTag = useCallback((id: string) => {
     setSelectedTagIds((prev) =>
@@ -254,6 +272,38 @@ export function ConversationList({
                   className={cn(
                     "text-sm",
                     filter === opt.value
+                      ? "text-primary"
+                      : "text-popover-foreground"
+                  )}
+                >
+                  {opt.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              className={cn(
+                "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
+                contactType !== "all"
+                  ? "text-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {contactType === "groups" && <Users className="h-3 w-3" />}
+              {CONTACT_TYPE_OPTIONS.find((o) => o.value === contactType)?.label ??
+                "All chats"}
+              <ChevronDown className="h-3 w-3" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="border-border bg-popover">
+              {CONTACT_TYPE_OPTIONS.map((opt) => (
+                <DropdownMenuItem
+                  key={opt.value}
+                  onClick={() => setContactType(opt.value)}
+                  className={cn(
+                    "text-sm",
+                    contactType === opt.value
                       ? "text-primary"
                       : "text-popover-foreground"
                   )}
