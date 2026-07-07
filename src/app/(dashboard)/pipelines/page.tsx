@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { Pipeline, PipelineStage, Deal } from "@/types";
 import { PipelineBoard } from "@/components/pipelines/pipeline-board";
@@ -49,6 +50,14 @@ export default function PipelinesPage() {
   const canEditSettings = useCan("edit-settings");
   const canCreateDeals = useCan("send-messages");
   const { accountId } = useAuth();
+
+  // Deep-link: /pipelines?pipeline=<id>&deal=<id> (e.g. clicking an active
+  // deal in the inbox contact sidebar) selects that pipeline and opens the
+  // deal's edit form. Handled once per deal id via the ref below.
+  const searchParams = useSearchParams();
+  const deepPipelineId = searchParams.get("pipeline");
+  const deepDealId = searchParams.get("deal");
+  const deepDealHandledRef = useRef<string | null>(null);
 
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>("");
@@ -154,9 +163,14 @@ export default function PipelinesPage() {
       if (cancelled) return;
       setPipelines(list);
       if (list.length > 0) {
-        setSelectedPipelineId((prev) =>
-          prev && list.some((p) => p.id === prev) ? prev : list[0].id,
-        );
+        setSelectedPipelineId((prev) => {
+          // A ?pipeline=<id> deep-link wins so the inbox → deal link lands
+          // on the right board without a flash of the default pipeline.
+          if (deepPipelineId && list.some((p) => p.id === deepPipelineId)) {
+            return deepPipelineId;
+          }
+          return prev && list.some((p) => p.id === prev) ? prev : list[0].id;
+        });
       } else {
         setSelectedPipelineId("");
       }
@@ -165,7 +179,7 @@ export default function PipelinesPage() {
     return () => {
       cancelled = true;
     };
-  }, [loadPipelines, seedDefaultPipeline]);
+  }, [loadPipelines, seedDefaultPipeline, deepPipelineId]);
 
   // Load stages + deals whenever selected pipeline changes.
   // Clearing on no-selection is a legitimate sync with URL/prop
@@ -244,6 +258,21 @@ export default function PipelinesPage() {
     setDefaultStageId(deal.stage_id);
     setDealFormOpen(true);
   }, []);
+
+  // Open the deep-linked deal (?deal=<id>) once its pipeline is active and
+  // that pipeline's deals have loaded. The ref guards against reopening if
+  // the user closes the form while the URL param is still present.
+  useEffect(() => {
+    if (!deepDealId || deepDealHandledRef.current === deepDealId) return;
+    if (deepPipelineId && selectedPipelineId !== deepPipelineId) return;
+    const match = deals.find((d) => d.id === deepDealId);
+    if (!match) return;
+    deepDealHandledRef.current = deepDealId;
+    // Opening the form from a URL param is a legitimate sync, like the
+    // load effects above; the ref makes it fire once.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    handleEditDeal(match);
+  }, [deepDealId, deepPipelineId, selectedPipelineId, deals, handleEditDeal]);
 
   async function handleCreatePipeline() {
     const name = newPipelineName.trim();

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import type {
@@ -337,9 +338,11 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                 <p className="px-1 text-xs text-muted-foreground">No deals</p>
               ) : (
                 deals.map((deal) => (
-                  <div
+                  <Link
                     key={deal.id}
-                    className="rounded-lg bg-muted px-3 py-2"
+                    href={`/pipelines?pipeline=${deal.pipeline_id}&deal=${deal.id}`}
+                    className="block rounded-lg bg-muted px-3 py-2 transition-colors hover:bg-muted/70"
+                    title="Open this deal in Pipelines"
                   >
                     <p className="text-sm font-medium text-foreground">
                       {deal.title}
@@ -361,7 +364,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                         </span>
                       )}
                     </div>
-                  </div>
+                  </Link>
                 ))
               )}
 
