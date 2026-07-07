@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { sendStatus } from '@/lib/whatsapp/provider/evolution'
-import { getDefaultInstanceName } from '@/lib/whatsapp/resolve-send-target'
+import { instanceForConversation } from '@/lib/whatsapp/resolve-send-target'
 
 const STATUS_TTL_MS = 24 * 60 * 60 * 1000
 
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
     const accountId = profile?.account_id as string | undefined
     if (!accountId) return NextResponse.json({ error: 'No account' }, { status: 403 })
 
-    const { type, content, caption, backgroundColor, font } = (await request
+    const { type, content, caption, backgroundColor, font, configId } = (await request
       .json()
       .catch(() => ({}))) as {
       type?: 'text' | 'image' | 'video'
@@ -41,6 +41,8 @@ export async function POST(request: Request) {
       caption?: string
       backgroundColor?: string
       font?: number
+      /** whatsapp_config id to post from; falls back to the default number. */
+      configId?: string
     }
     if (!type || !['text', 'image', 'video'].includes(type)) {
       return NextResponse.json({ error: 'type must be text, image, or video' }, { status: 400 })
@@ -49,7 +51,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'content is required' }, { status: 400 })
     }
 
-    const instanceName = await getDefaultInstanceName(supabase, accountId)
+    // Resolve the chosen number's instance (falls back to the account default
+    // when configId is absent or doesn't belong to this account).
+    const instanceName = await instanceForConversation(supabase, accountId, configId ?? null)
     if (!instanceName) {
       return NextResponse.json({ error: 'WhatsApp not connected.' }, { status: 400 })
     }
@@ -82,6 +86,7 @@ export async function POST(request: Request) {
       await admin.from('status_updates').upsert(
         {
           account_id: accountId,
+          whatsapp_config_id: configId ?? null,
           is_mine: true,
           content_type: type,
           content_text: type === 'text' ? content : caption || null,
