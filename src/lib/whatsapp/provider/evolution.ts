@@ -934,10 +934,12 @@ export async function fetchGroupInfo(
 // ============================================================
 
 export interface GroupParticipant {
-  /** Participant JID (phone@s.whatsapp.net or an @lid). */
+  /** Display JID (may be an @lid when the member's number is private). */
   id: string
-  /** Digits extracted from the JID (best-effort; empty for bare LIDs). */
+  /** Real phone digits when WhatsApp exposes them, else the LID digits. */
   phone: string
+  /** True when a real @s.whatsapp.net number was provided (chat-able). */
+  hasRealPhone: boolean
   admin: 'admin' | 'superadmin' | null
 }
 
@@ -976,9 +978,14 @@ function participantsFrom(raw: unknown): GroupParticipant[] {
   return raw.map((p) => {
     const rec = (p ?? {}) as Record<string, unknown>
     const id = String(rec.id ?? '')
+    // Newer WhatsApp exposes members as @lid but includes the real number
+    // in `phoneNumber` (a @s.whatsapp.net JID) — prefer it when present.
+    const realJid = typeof rec.phoneNumber === 'string' ? rec.phoneNumber : ''
+    const hasRealPhone = realJid.includes('@s.whatsapp.net')
     return {
       id,
-      phone: jidToPhone(id),
+      phone: jidToPhone(hasRealPhone ? realJid : id),
+      hasRealPhone,
       admin: (rec.admin as 'admin' | 'superadmin' | null) ?? null,
     }
   })

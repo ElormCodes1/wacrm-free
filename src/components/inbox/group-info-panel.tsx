@@ -19,6 +19,7 @@ import {
   Loader2,
   Megaphone,
   Lock,
+  MessageSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,6 +35,8 @@ import { toast } from "sonner";
 interface Participant {
   id: string;
   phone: string;
+  hasRealPhone: boolean;
+  name?: string | null;
   admin: "admin" | "superadmin" | null;
 }
 interface GroupDetail {
@@ -70,6 +73,7 @@ export function GroupInfoPanel({
   onNameResolved?: (name: string) => void;
 }) {
   const [group, setGroup] = useState<GroupDetail | null>(null);
+  const [amOwner, setAmOwner] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -88,6 +92,7 @@ export function GroupInfoPanel({
       const data = await res.json();
       if (res.ok && data.group) {
         setGroup(data.group as GroupDetail);
+        setAmOwner(data.amOwner === true);
         const subject = (data.group.subject as string | null)?.trim();
         setName(subject || groupName);
         setDesc(data.group.description ?? "");
@@ -213,6 +218,30 @@ export function GroupInfoPanel({
     if (ok) setGroup(null);
   }
 
+  async function openChat(member: Participant) {
+    if (!member.hasRealPhone) {
+      toast.error("This member's number is private.");
+      return;
+    }
+    setBusy(`chat:${member.phone}`);
+    try {
+      const res = await fetch("/api/whatsapp/conversation/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: member.phone, name: member.name ?? undefined }),
+      });
+      const data = await res.json();
+      if (res.ok && data.conversationId) {
+        window.location.assign(`/inbox?c=${data.conversationId}`);
+        return;
+      }
+      toast.error(data.error ?? "Could not open chat");
+    } catch {
+      toast.error("Could not open chat");
+    }
+    setBusy(null);
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-6">
@@ -261,7 +290,7 @@ export function GroupInfoPanel({
                 <X className="h-4 w-4" />
               </button>
             </div>
-          ) : (
+          ) : amOwner ? (
             <button
               onClick={() => setEditingName(true)}
               className="group flex w-full items-center justify-between gap-2 rounded-md px-1 py-0.5 text-left hover:bg-muted"
@@ -271,6 +300,10 @@ export function GroupInfoPanel({
               </span>
               <Pencil className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100" />
             </button>
+          ) : (
+            <div className="truncate px-1 py-0.5 text-sm font-semibold text-foreground">
+              {group?.subject ?? groupName}
+            </div>
           )}
           <p className="mt-0.5 px-1 text-xs text-muted-foreground">
             {group?.size ?? members.length} members · {admins} admin
@@ -285,7 +318,7 @@ export function GroupInfoPanel({
           <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
             Description
           </span>
-          {!editingDesc && (
+          {!editingDesc && amOwner && (
             <button
               onClick={() => setEditingDesc(true)}
               className="text-muted-foreground hover:text-foreground"
@@ -327,26 +360,30 @@ export function GroupInfoPanel({
         )}
       </div>
 
-      {/* Settings */}
-      <div className="space-y-1.5">
-        <span className="px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-          Settings
-        </span>
-        <SettingToggle
-          icon={Megaphone}
-          label="Only admins can send"
-          on={!!group?.announce}
-          busy={busy === "announcement" || busy === "not_announcement"}
-          onToggle={() => setSetting(group?.announce ? "not_announcement" : "announcement")}
-        />
-        <SettingToggle
-          icon={Lock}
-          label="Only admins edit info"
-          on={!!group?.restrict}
-          busy={busy === "locked" || busy === "unlocked"}
-          onToggle={() => setSetting(group?.restrict ? "unlocked" : "locked")}
-        />
-      </div>
+      {/* Settings — group creator only */}
+      {amOwner && (
+        <div className="space-y-1.5">
+          <span className="px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            Settings
+          </span>
+          <SettingToggle
+            icon={Megaphone}
+            label="Only admins can send"
+            on={!!group?.announce}
+            busy={busy === "announcement" || busy === "not_announcement"}
+            onToggle={() =>
+              setSetting(group?.announce ? "not_announcement" : "announcement")
+            }
+          />
+          <SettingToggle
+            icon={Lock}
+            label="Only admins edit info"
+            on={!!group?.restrict}
+            busy={busy === "locked" || busy === "unlocked"}
+            onToggle={() => setSetting(group?.restrict ? "unlocked" : "locked")}
+          />
+        </div>
+      )}
 
       {/* Members */}
       <div>
@@ -354,20 +391,24 @@ export function GroupInfoPanel({
           <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
             Members
           </span>
-          <button
-            onClick={() => setAddOpen(true)}
-            className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
-          >
-            <UserPlus className="h-3 w-3" />
-            Add
-          </button>
+          {amOwner && (
+            <button
+              onClick={() => setAddOpen(true)}
+              className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
+            >
+              <UserPlus className="h-3 w-3" />
+              Add
+            </button>
+          )}
         </div>
-        <div className="mt-1 space-y-0.5">
+        <div className="mt-1 max-h-72 space-y-0.5 overflow-y-auto pr-0.5">
           {members.map((m) => (
             <MemberRow
               key={m.id}
               member={m}
               busy={busy}
+              canManage={amOwner}
+              onOpenChat={() => openChat(m)}
               onPromote={() => participantAction("promote", m.phone)}
               onDemote={() => participantAction("demote", m.phone)}
               onRemove={() => participantAction("remove", m.phone)}
@@ -376,7 +417,8 @@ export function GroupInfoPanel({
         </div>
       </div>
 
-      {/* Invite link */}
+      {/* Invite link — group creator only */}
+      {amOwner && (
       <div className="space-y-1.5">
         <span className="px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
           Invite link
@@ -415,6 +457,7 @@ export function GroupInfoPanel({
           </button>
         )}
       </div>
+      )}
 
       {/* Leave */}
       <button
@@ -494,62 +537,82 @@ function SettingToggle({
 function MemberRow({
   member,
   busy,
+  canManage,
+  onOpenChat,
   onPromote,
   onDemote,
   onRemove,
 }: {
   member: Participant;
   busy: string | null;
+  canManage: boolean;
+  onOpenChat: () => void;
   onPromote: () => void;
   onDemote: () => void;
   onRemove: () => void;
 }) {
   const isAdmin = !!member.admin;
   const rowBusy = busy?.endsWith(member.phone) ?? false;
+  const label = member.name || `+${member.phone}`;
+  const chatable = member.hasRealPhone;
   return (
-    <div className="flex items-center gap-2 rounded-md px-1 py-1 hover:bg-muted">
-      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-medium text-muted-foreground">
-        {member.phone.slice(-2)}
-      </div>
-      <span className="flex-1 truncate text-xs text-foreground">+{member.phone}</span>
+    <div className="group/mem flex items-center gap-2 rounded-md px-1 py-1 hover:bg-muted">
+      <button
+        type="button"
+        onClick={chatable ? onOpenChat : undefined}
+        disabled={!chatable}
+        title={chatable ? "Message" : "Number is private"}
+        className={`flex min-w-0 flex-1 items-center gap-2 text-left ${
+          chatable ? "cursor-pointer" : "cursor-default"
+        }`}
+      >
+        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-medium text-muted-foreground">
+          {label.replace(/^\+/, "").slice(0, 2).toUpperCase()}
+        </div>
+        <span className="min-w-0 flex-1 truncate text-xs text-foreground">{label}</span>
+        {chatable && (
+          <MessageSquare className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 group-hover/mem:opacity-100" />
+        )}
+      </button>
       {isAdmin && (
-        <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[9px] font-medium text-primary">
+        <span className="shrink-0 rounded-full bg-primary/15 px-1.5 py-0.5 text-[9px] font-medium text-primary">
           {member.admin === "superadmin" ? "Owner" : "Admin"}
         </span>
       )}
-      {rowBusy ? (
-        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-      ) : (
-        <div className="flex items-center gap-0.5">
-          {member.admin !== "superadmin" &&
-            (isAdmin ? (
+      {canManage &&
+        (rowBusy ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+        ) : (
+          <div className="flex items-center gap-0.5">
+            {member.admin !== "superadmin" &&
+              (isAdmin ? (
+                <button
+                  title="Dismiss as admin"
+                  onClick={onDemote}
+                  className="rounded p-1 text-muted-foreground hover:bg-card hover:text-foreground"
+                >
+                  <ShieldMinus className="h-3.5 w-3.5" />
+                </button>
+              ) : (
+                <button
+                  title="Make admin"
+                  onClick={onPromote}
+                  className="rounded p-1 text-muted-foreground hover:bg-card hover:text-primary"
+                >
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                </button>
+              ))}
+            {member.admin !== "superadmin" && (
               <button
-                title="Dismiss as admin"
-                onClick={onDemote}
-                className="rounded p-1 text-muted-foreground hover:bg-card hover:text-foreground"
+                title="Remove from group"
+                onClick={onRemove}
+                className="rounded p-1 text-muted-foreground hover:bg-card hover:text-destructive"
               >
-                <ShieldMinus className="h-3.5 w-3.5" />
+                <UserMinus className="h-3.5 w-3.5" />
               </button>
-            ) : (
-              <button
-                title="Make admin"
-                onClick={onPromote}
-                className="rounded p-1 text-muted-foreground hover:bg-card hover:text-primary"
-              >
-                <ShieldCheck className="h-3.5 w-3.5" />
-              </button>
-            ))}
-          {member.admin !== "superadmin" && (
-            <button
-              title="Remove from group"
-              onClick={onRemove}
-              className="rounded p-1 text-muted-foreground hover:bg-card hover:text-destructive"
-            >
-              <UserMinus className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        ))}
     </div>
   );
 }

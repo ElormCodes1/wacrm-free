@@ -6,6 +6,8 @@ import {
   updateGroupDescription,
   updateGroupSetting,
   leaveGroup,
+  fetchInstance,
+  jidToPhone,
   type GroupSettingAction,
 } from '@/lib/whatsapp/provider/evolution'
 import { instanceForGroup, groupJidFromId } from '@/lib/whatsapp/resolve-group'
@@ -60,7 +62,39 @@ export async function GET(
         .eq('phone', groupId.replace(/\D/g, ''))
         .neq('name', group.subject.trim())
     }
-    return NextResponse.json({ group })
+
+    // Owner detection — match the connected number to its participant. Only
+    // the group's creator (superadmin === this number) may manage members.
+    const inst = await fetchInstance(instanceName)
+    const ownDigits = jidToPhone(inst?.ownerJid ?? '')
+    const me = ownDigits
+      ? group.participants.find((p) => p.phone === ownDigits)
+      : undefined
+    const amOwner = me?.admin === 'superadmin'
+
+    // Resolve member names from CRM contacts (members carry their real phone).
+    const phones = group.participants.map((p) => p.phone).filter(Boolean)
+    const nameByPhone = new Map<string, string>()
+    if (phones.length) {
+      const { data: cts } = await c.supabase
+        .from('contacts')
+        .select('name, phone_normalized')
+        .eq('account_id', c.accountId)
+        .in('phone_normalized', phones)
+      for (const ct of cts ?? []) {
+        if (ct.name && ct.phone_normalized)
+          nameByPhone.set(ct.phone_normalized as string, ct.name as string)
+      }
+    }
+    const participants = group.participants.map((p) => ({
+      ...p,
+      name: nameByPhone.get(p.phone) ?? null,
+    }))
+
+    return NextResponse.json({
+      group: { ...group, participants },
+      amOwner,
+    })
   } catch (e) {
     const m = e instanceof Error ? e.message : 'Internal server error'
     return NextResponse.json({ error: m }, { status: 500 })
