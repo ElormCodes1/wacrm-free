@@ -3,29 +3,36 @@
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
-import { cn } from "@/lib/utils";
-import type { Contact, Deal, ContactNote, Tag } from "@/types";
+import type {
+  Contact,
+  Deal,
+  ContactNote,
+  Tag,
+  Pipeline,
+  PipelineStage,
+} from "@/types";
 import {
   Phone,
   Mail,
   Copy,
   Check,
-  User,
   Tag as TagIcon,
   DollarSign,
   StickyNote,
   Plus,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
+import { toast } from "sonner";
 
 interface ContactSidebarProps {
   contact: Contact | null;
 }
 
 export function ContactSidebar({ contact }: ContactSidebarProps) {
-  const { accountId } = useAuth();
+  const { accountId, defaultCurrency } = useAuth();
   const [copied, setCopied] = useState(false);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [notes, setNotes] = useState<ContactNote[]>([]);
@@ -33,8 +40,22 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
 
+  // "Add to deal" — a compact inline form to drop this contact into a
+  // pipeline stage without leaving the inbox.
+  const [showAddDeal, setShowAddDeal] = useState(false);
+  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [dealStages, setDealStages] = useState<PipelineStage[]>([]);
+  const [dealTitle, setDealTitle] = useState("");
+  const [dealValue, setDealValue] = useState("");
+  const [dealPipelineId, setDealPipelineId] = useState("");
+  const [dealStageId, setDealStageId] = useState("");
+  const [savingDeal, setSavingDeal] = useState(false);
+
   const fetchContactData = useCallback(async () => {
     if (!contact) return;
+
+    // Collapse the add-deal form when switching contacts.
+    setShowAddDeal(false);
 
     const supabase = createClient();
 
@@ -114,6 +135,105 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     }
     setAddingNote(false);
   }, [contact, newNote, accountId]);
+
+  const loadStages = useCallback(async (pipelineId: string) => {
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("pipeline_stages")
+      .select("*")
+      .eq("pipeline_id", pipelineId)
+      .order("position");
+    return (data ?? []) as PipelineStage[];
+  }, []);
+
+  const openAddDeal = useCallback(async () => {
+    if (!contact) return;
+    setShowAddDeal(true);
+    setDealTitle(contact.name || contact.phone || "New deal");
+    setDealValue("");
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("pipelines")
+      .select("*")
+      .order("created_at");
+    const list = (data ?? []) as Pipeline[];
+    setPipelines(list);
+    const first = list[0];
+    if (first) {
+      setDealPipelineId(first.id);
+      const stages = await loadStages(first.id);
+      setDealStages(stages);
+      setDealStageId(stages[0]?.id ?? "");
+    } else {
+      setDealPipelineId("");
+      setDealStages([]);
+      setDealStageId("");
+    }
+  }, [contact, loadStages]);
+
+  const handlePipelineChange = useCallback(
+    async (pipelineId: string) => {
+      setDealPipelineId(pipelineId);
+      const stages = await loadStages(pipelineId);
+      setDealStages(stages);
+      setDealStageId(stages[0]?.id ?? "");
+    },
+    [loadStages],
+  );
+
+  const handleCreateDeal = useCallback(async () => {
+    if (!contact) return;
+    if (!accountId) {
+      toast.error("Your profile is not linked to an account.");
+      return;
+    }
+    if (!dealPipelineId || !dealStageId || !dealTitle.trim()) {
+      toast.error("Pick a pipeline and a stage.");
+      return;
+    }
+    setSavingDeal(true);
+    const supabase = createClient();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const user = session?.user;
+    if (!user) {
+      toast.error("Not signed in");
+      setSavingDeal(false);
+      return;
+    }
+    const { data, error } = await supabase
+      .from("deals")
+      .insert({
+        title: dealTitle.trim(),
+        value: parseFloat(dealValue) || 0,
+        currency: defaultCurrency,
+        contact_id: contact.id,
+        pipeline_id: dealPipelineId,
+        stage_id: dealStageId,
+        user_id: user.id,
+        account_id: accountId,
+        status: "open",
+      })
+      .select("*, stage:pipeline_stages(*)")
+      .single();
+    setSavingDeal(false);
+    if (error || !data) {
+      toast.error("Failed to add deal");
+      return;
+    }
+    setDeals((prev) => [data as Deal, ...prev]);
+    setShowAddDeal(false);
+    toast.success("Added to pipeline");
+  }, [
+    contact,
+    accountId,
+    dealPipelineId,
+    dealStageId,
+    dealTitle,
+    dealValue,
+    defaultCurrency,
+  ]);
 
   if (!contact) {
     return (
@@ -213,7 +333,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
               Active Deals
             </div>
             <div className="mt-2 space-y-2">
-              {deals.length === 0 ? (
+              {deals.length === 0 && !showAddDeal ? (
                 <p className="px-1 text-xs text-muted-foreground">No deals</p>
               ) : (
                 deals.map((deal) => (
@@ -243,6 +363,104 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                     </div>
                   </div>
                 ))
+              )}
+
+              {showAddDeal ? (
+                <div className="space-y-2 rounded-lg border border-border bg-muted/40 p-2.5">
+                  {pipelines.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      No pipelines yet. Create one on the Pipelines page first.
+                    </p>
+                  ) : (
+                    <>
+                      <input
+                        value={dealTitle}
+                        onChange={(e) => setDealTitle(e.target.value)}
+                        placeholder="Deal title"
+                        className="w-full rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-foreground placeholder-muted-foreground outline-none focus:border-primary/60"
+                      />
+                      <div className="grid gap-1">
+                        <label className="px-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                          Pipeline
+                        </label>
+                        <select
+                          value={dealPipelineId}
+                          onChange={(e) => handlePipelineChange(e.target.value)}
+                          className="h-8 w-full rounded-md border border-border bg-card px-2 text-xs text-foreground outline-none focus:border-primary/60"
+                        >
+                          {pipelines.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="grid gap-1">
+                        <label className="px-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                          Stage
+                        </label>
+                        <select
+                          value={dealStageId}
+                          onChange={(e) => setDealStageId(e.target.value)}
+                          className="h-8 w-full rounded-md border border-border bg-card px-2 text-xs text-foreground outline-none focus:border-primary/60"
+                        >
+                          {dealStages.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="relative">
+                        <DollarSign className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+                        <input
+                          type="number"
+                          value={dealValue}
+                          onChange={(e) => setDealValue(e.target.value)}
+                          placeholder="Value (optional)"
+                          className="w-full rounded-md border border-border bg-card py-1.5 pl-6 pr-2 text-xs text-foreground placeholder-muted-foreground outline-none focus:border-primary/60"
+                        />
+                      </div>
+                    </>
+                  )}
+                  <div className="flex gap-2 pt-0.5">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 flex-1 text-xs"
+                      onClick={() => setShowAddDeal(false)}
+                      disabled={savingDeal}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="h-7 flex-1 bg-primary text-xs text-primary-foreground hover:bg-primary/90"
+                      onClick={handleCreateDeal}
+                      disabled={
+                        savingDeal ||
+                        pipelines.length === 0 ||
+                        !dealPipelineId ||
+                        !dealStageId
+                      }
+                    >
+                      {savingDeal ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        "Save"
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={openAddDeal}
+                  className="flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-border px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"
+                >
+                  <Plus className="h-3 w-3" />
+                  Add to deal
+                </button>
               )}
             </div>
           </div>
