@@ -48,8 +48,12 @@ export function StoryViewer({
   const [groupIndex, setGroupIndex] = useState(startIndex);
   const [itemIndex, setItemIndex] = useState(0);
   const [progress, setProgress] = useState(0);
+  const [durationMs, setDurationMs] = useState(IMAGE_TEXT_DURATION_MS);
   const [showViewers, setShowViewers] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  // Mirrors `progress` for the RAF clock so it can resume from where it
+  // paused (e.g. when the "seen by" panel opens) without a stale closure.
+  const progressRef = useRef(0);
 
   const group = groups[groupIndex];
   const item = group?.items[itemIndex];
@@ -84,28 +88,30 @@ export function StoryViewer({
     });
   }, [groups]);
 
-  // Mark viewed + reset the "seen by" panel whenever the item changes.
+  // Reset the clock + "seen by" panel and mark viewed whenever the item
+  // changes. Image/text use the fixed duration; video/audio replace it from
+  // onLoadedMetadata once the media reports its real length.
   useEffect(() => {
     setShowViewers(false);
+    setProgress(0);
+    progressRef.current = 0;
+    setDurationMs(IMAGE_TEXT_DURATION_MS);
     if (item && !group?.isMine && !item.viewed_at) onViewed(item.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupIndex, itemIndex]);
 
-  // Auto-advance timer for image/text. Video and audio drive their own
-  // progress (via onTimeUpdate) and advance on ended, so they opt out of
-  // this fixed timer. Paused while the "seen by" panel is open.
+  // Progress clock — drives the top segment bar for EVERY status type, so the
+  // timer always animates as it plays (image, text, video, or voice note),
+  // independent of media autoplay quirks. Runs for `durationMs`, resumes from
+  // where it paused, and advances at the end. Frozen while "seen by" is open.
   useEffect(() => {
-    if (
-      !item ||
-      item.content_type === "video" ||
-      item.content_type === "audio" ||
-      showViewers
-    )
-      return;
-    const start = performance.now();
+    if (!item || showViewers) return;
+    const startedAt = performance.now();
+    const from = progressRef.current;
     let raf = 0;
     const tick = (now: number) => {
-      const p = Math.min(1, (now - start) / IMAGE_TEXT_DURATION_MS);
+      const p = Math.min(1, from + (now - startedAt) / durationMs);
+      progressRef.current = p;
       setProgress(p);
       if (p >= 1) next();
       else raf = requestAnimationFrame(tick);
@@ -113,7 +119,7 @@ export function StoryViewer({
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupIndex, itemIndex, showViewers]);
+  }, [groupIndex, itemIndex, showViewers, durationMs]);
 
   // Pause/resume the video when the "seen by" panel toggles.
   useEffect(() => {
@@ -143,7 +149,7 @@ export function StoryViewer({
         {group.items.map((it, i) => (
           <div key={it.id} className="h-0.5 flex-1 overflow-hidden rounded-full bg-white/30">
             <div
-              className="h-full bg-white transition-[width] duration-100 ease-linear"
+              className="h-full bg-white"
               style={{
                 width: i < itemIndex ? "100%" : i === itemIndex ? `${progress * 100}%` : "0%",
               }}
@@ -192,9 +198,9 @@ export function StoryViewer({
               autoPlay
               playsInline
               onEnded={next}
-              onTimeUpdate={(e) => {
-                const v = e.currentTarget;
-                if (v.duration) setProgress(v.currentTime / v.duration);
+              onLoadedMetadata={(e) => {
+                const d = e.currentTarget.duration;
+                if (d && Number.isFinite(d)) setDurationMs(Math.max(1000, d * 1000));
               }}
             />
           ) : (
@@ -208,10 +214,9 @@ export function StoryViewer({
               autoPlay
               className="w-4/5"
               onEnded={next}
-              onTimeUpdate={(e) => {
-                const a = e.currentTarget;
-                if (a.duration && Number.isFinite(a.duration))
-                  setProgress(a.currentTime / a.duration);
+              onLoadedMetadata={(e) => {
+                const d = e.currentTarget.duration;
+                if (d && Number.isFinite(d)) setDurationMs(Math.max(1000, d * 1000));
               }}
             />
           ) : (
