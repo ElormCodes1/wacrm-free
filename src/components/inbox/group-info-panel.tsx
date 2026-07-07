@@ -61,9 +61,13 @@ interface GroupDetail {
 export function GroupInfoPanel({
   groupId,
   groupName,
+  onNameResolved,
 }: {
   groupId: string;
   groupName: string;
+  /** Fired when the live group subject is learned, so the header + list can
+   *  update from the raw id fallback without a reload. */
+  onNameResolved?: (name: string) => void;
 }) {
   const [group, setGroup] = useState<GroupDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -84,15 +88,17 @@ export function GroupInfoPanel({
       const data = await res.json();
       if (res.ok && data.group) {
         setGroup(data.group as GroupDetail);
-        setName(data.group.subject ?? groupName);
+        const subject = (data.group.subject as string | null)?.trim();
+        setName(subject || groupName);
         setDesc(data.group.description ?? "");
+        if (subject && subject !== groupName) onNameResolved?.(subject);
       }
     } catch {
       /* leave the placeholder */
     } finally {
       setLoading(false);
     }
-  }, [groupId, groupName]);
+  }, [groupId, groupName, onNameResolved]);
 
   useEffect(() => {
     load();

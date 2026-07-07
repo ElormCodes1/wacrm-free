@@ -436,6 +436,27 @@ export default function InboxPage() {
     [deepLinkConvId, activeConversation?.id]
   );
 
+  // When the Group Info panel learns a group's real subject, update the
+  // open contact (thread header + sidebar) and its list row so the raw-id
+  // "Group" fallback is replaced live, no reload needed.
+  const handleGroupNameResolved = useCallback(
+    (name: string) => {
+      setActiveContact((c) =>
+        c && c.is_group && c.name !== name ? { ...c, name } : c,
+      );
+      setConversations((prev) =>
+        prev.map((cv) =>
+          cv.id === activeConversation?.id &&
+          cv.contact?.is_group &&
+          cv.contact.name !== name
+            ? { ...cv, contact: { ...cv.contact, name } }
+            : cv,
+        ),
+      );
+    },
+    [activeConversation?.id],
+  );
+
   const handleSelectConversation = useCallback(
     (conv: Conversation) => {
       // Re-clicking the already-active conversation would clear the
@@ -622,7 +643,10 @@ export default function InboxPage() {
             toggle — which is itself desktop-only — never affects it. */}
         {contactPanelOpen && (
           <div className="hidden lg:block">
-            <ContactSidebar contact={activeContact} />
+            <ContactSidebar
+              contact={activeContact}
+              onGroupNameResolved={handleGroupNameResolved}
+            />
           </div>
         )}
       </div>

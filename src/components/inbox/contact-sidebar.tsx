@@ -32,9 +32,15 @@ import { contactDisplayName } from "@/lib/inbox/contact-name";
 
 interface ContactSidebarProps {
   contact: Contact | null;
+  /** Bubbles the resolved group subject up so the thread header + list can
+   *  replace the raw-id "Group" fallback without a reload. */
+  onGroupNameResolved?: (name: string) => void;
 }
 
-export function ContactSidebar({ contact }: ContactSidebarProps) {
+export function ContactSidebar({
+  contact,
+  onGroupNameResolved,
+}: ContactSidebarProps) {
   const { accountId, defaultCurrency } = useAuth();
   const [copied, setCopied] = useState(false);
   const [deals, setDeals] = useState<Deal[]>([]);
@@ -277,7 +283,11 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
           {/* Groups get the Group Info panel in place of phone/tags/deals. */}
           {contact.is_group && (
             <div className="mt-4">
-              <GroupInfoPanel groupId={contact.phone} groupName={displayName} />
+              <GroupInfoPanel
+                groupId={contact.phone}
+                groupName={displayName}
+                onNameResolved={onGroupNameResolved}
+              />
             </div>
           )}
 
