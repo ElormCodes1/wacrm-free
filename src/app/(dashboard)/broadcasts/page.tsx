@@ -16,7 +16,6 @@ import {
 import { Radio, Plus, Loader2 } from 'lucide-react';
 import { useCan } from '@/hooks/use-can';
 import { GatedButton } from '@/components/ui/gated-button';
-import { StatusDialog } from '@/components/broadcasts/status-dialog';
 import { getBroadcastStatus } from '@/lib/broadcast-status';
 
 /**
@@ -186,7 +185,6 @@ export default function BroadcastsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <StatusDialog />
           <GatedButton
             canAct={canCreate}
             gateReason="create broadcasts"

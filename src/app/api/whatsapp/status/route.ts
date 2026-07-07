@@ -1,14 +1,18 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { sendStatus } from '@/lib/whatsapp/provider/evolution'
 import { getDefaultInstanceName } from '@/lib/whatsapp/resolve-send-target'
 
+const STATUS_TTL_MS = 24 * 60 * 60 * 1000
+
 /**
  * POST /api/whatsapp/status
- *   { type: 'text' | 'image', content, caption?, backgroundColor? }
+ *   { type: 'text' | 'image' | 'video', content, caption?, backgroundColor? }
  *
  * Posts to WhatsApp Status (Stories) — visible to all contacts, no
- * per-contact send.
+ * per-contact send. Records a "My status" row immediately so it shows on
+ * the Status page without waiting for the webhook echo.
  */
 export async function POST(request: Request) {
   try {
@@ -30,13 +34,16 @@ export async function POST(request: Request) {
     if (!accountId) return NextResponse.json({ error: 'No account' }, { status: 403 })
 
     const { type, content, caption, backgroundColor } = (await request.json().catch(() => ({}))) as {
-      type?: 'text' | 'image'
+      type?: 'text' | 'image' | 'video'
       content?: string
       caption?: string
       backgroundColor?: string
     }
-    if (!type || !content) {
-      return NextResponse.json({ error: 'type and content are required' }, { status: 400 })
+    if (!type || !['text', 'image', 'video'].includes(type)) {
+      return NextResponse.json({ error: 'type must be text, image, or video' }, { status: 400 })
+    }
+    if (!content) {
+      return NextResponse.json({ error: 'content is required' }, { status: 400 })
     }
 
     const instanceName = await getDefaultInstanceName(supabase, accountId)
@@ -44,8 +51,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'WhatsApp not connected.' }, { status: 400 })
     }
 
+    let messageId = ''
     try {
-      await sendStatus({
+      const res = await sendStatus({
         instanceName,
         type,
         content,
@@ -53,9 +61,34 @@ export async function POST(request: Request) {
         backgroundColor,
         allContacts: true,
       })
+      messageId = res.messageId
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Post failed'
       return NextResponse.json({ error: `Status post failed: ${message}` }, { status: 502 })
+    }
+
+    // Record "My status" immediately (webhook echo would arrive later and
+    // is deduped by the UNIQUE(account_id, message_id) upsert).
+    if (messageId) {
+      const admin = createAdminClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      )
+      const now = new Date()
+      await admin.from('status_updates').upsert(
+        {
+          account_id: accountId,
+          is_mine: true,
+          content_type: type,
+          content_text: type === 'text' ? content : caption || null,
+          media_url: type === 'text' ? null : content,
+          background_color: type === 'text' ? backgroundColor || null : null,
+          message_id: messageId,
+          posted_at: now.toISOString(),
+          expires_at: new Date(now.getTime() + STATUS_TTL_MS).toISOString(),
+        },
+        { onConflict: 'account_id,message_id', ignoreDuplicates: true },
+      )
     }
 
     return NextResponse.json({ success: true })

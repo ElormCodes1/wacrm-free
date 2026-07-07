@@ -367,7 +367,13 @@ async function handleInboundMessage(instanceName: string, data: any) {
   if (!key?.id || !key.remoteJid) return
 
   let jid: string = key.remoteJid
-  if (jid === 'status@broadcast' || jid.endsWith('@newsletter')) {
+  if (jid.endsWith('@newsletter')) {
+    return
+  }
+  // Status/Stories: contacts' (and our own) status posts. Own path — no
+  // conversation, no flows/automations.
+  if (jid === 'status@broadcast') {
+    await handleStatusBroadcast(instanceName, data)
     return
   }
   // Group messages get their own path (attributed to the sending member).
@@ -478,6 +484,98 @@ async function handleOutboundEcho(instanceName: string, data: any, resolvedJid: 
       updated_at: new Date().toISOString(),
     })
     .eq('id', convResult.conversation.id)
+}
+
+// ============================================================
+// Status / Stories (status@broadcast)
+//
+// Both contacts' statuses and our own posts arrive here as MESSAGES_UPSERT
+// with remoteJid='status@broadcast'. Stored in status_updates with a 24h
+// expiry; no conversation, no flows/automations. Contacts are LINKED (not
+// created) so status-only posters don't pollute the CRM contact list.
+// ============================================================
+
+const STATUS_CONTENT_TYPES = new Set(['text', 'image', 'video', 'audio'])
+const STATUS_TTL_MS = 24 * 60 * 60 * 1000
+
+/** Baileys backgroundArgb (signed 32-bit ARGB int) → #RRGGBB, or null. */
+function argbToHex(argb: unknown): string | null {
+  if (typeof argb !== 'number' || !Number.isFinite(argb)) return null
+  const rgb = (argb >>> 0) & 0x00ffffff
+  return `#${rgb.toString(16).padStart(6, '0')}`
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function handleStatusBroadcast(instanceName: string, data: any) {
+  const key = data?.key
+  if (!key?.id) return
+
+  const config = await resolveConfig(instanceName)
+  if (!config) return
+
+  const message = adaptMessage(data)
+  if (!STATUS_CONTENT_TYPES.has(message.type)) return // skip reactions, etc.
+
+  const isMine = key.fromMe === true
+
+  // Resolve the poster (for contacts' statuses) to a real phone JID.
+  let posterPhone: string | null = null
+  let contactId: string | null = null
+  let posterName: string | null = null
+  if (!isMine) {
+    const posterJid =
+      (await resolveJid(instanceName, {
+        remoteJid: key.participant || key.participantAlt || '',
+        remoteJidAlt: key.participantAlt,
+      })) || ''
+    if (!posterJid) return
+    posterPhone = normalizePhone(jidToPhone(posterJid))
+    posterName = data.pushName || posterPhone || null
+    // Link an existing contact if we know them; do NOT create one.
+    const existing = await findExistingContact(supabaseAdmin(), config.account_id, posterPhone)
+    contactId = existing?.id ?? null
+  }
+
+  // Media (image/video/audio) → chat-media bucket.
+  let mediaUrl: string | null = null
+  let contentText: string | null = null
+  let backgroundColor: string | null = null
+
+  if (message.type === 'text') {
+    contentText = message.text?.body || null
+    backgroundColor = argbToHex(data.message?.extendedTextMessage?.backgroundArgb)
+  } else {
+    const mimeHint =
+      message.image?.mime_type || message.video?.mime_type || message.audio?.mime_type
+    const { url } = await storeInboundMedia(instanceName, message._raw, message.id, mimeHint)
+    mediaUrl = url
+    contentText = message.image?.caption || message.video?.caption || null
+  }
+
+  const postedAt = new Date(parseInt(message.timestamp) * 1000)
+  const expiresAt = new Date(postedAt.getTime() + STATUS_TTL_MS)
+
+  const { error } = await supabaseAdmin()
+    .from('status_updates')
+    .upsert(
+      {
+        account_id: config.account_id,
+        whatsapp_config_id: config.id,
+        contact_id: contactId,
+        is_mine: isMine,
+        poster_phone: posterPhone,
+        poster_name: posterName,
+        content_type: message.type,
+        content_text: contentText,
+        media_url: mediaUrl,
+        background_color: backgroundColor,
+        message_id: key.id,
+        posted_at: postedAt.toISOString(),
+        expires_at: expiresAt.toISOString(),
+      },
+      { onConflict: 'account_id,message_id', ignoreDuplicates: true },
+    )
+  if (error) console.error('[webhook] status insert failed:', error.message)
 }
 
 async function resolveConfig(
