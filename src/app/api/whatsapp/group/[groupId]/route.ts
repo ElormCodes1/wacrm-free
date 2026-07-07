@@ -12,7 +12,7 @@ import {
   type GroupSettingAction,
 } from '@/lib/whatsapp/provider/evolution'
 import { instanceForGroup, groupJidFromId } from '@/lib/whatsapp/resolve-group'
-import { storeGroupAvatar } from '@/lib/whatsapp/avatar'
+import { storeAvatarFromUrl } from '@/lib/whatsapp/avatar'
 
 function admin() {
   return createAdminClient(
@@ -84,7 +84,7 @@ export async function GET(
       .maybeSingle()
     let avatarUrl = (gc?.avatar_url as string | null) ?? null
     if (gc?.id && group.pictureUrl && !avatarUrl) {
-      avatarUrl = await storeGroupAvatar(admin(), gc.id as string, group.pictureUrl)
+      avatarUrl = await storeAvatarFromUrl(admin(), gc.id as string, group.pictureUrl)
     }
 
     // Owner detection — match the connected number to its participant. Only

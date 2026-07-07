@@ -319,6 +319,9 @@ export const DEFAULT_WEBHOOK_EVENTS = [
   'MESSAGE_RECEIPT_UPDATE',
   'SEND_MESSAGE',
   'CONTACTS_UPSERT',
+  // Profile changes (name/picture) — the array form of this event fires
+  // when a contact updates their profile, so we can auto-refresh avatars.
+  'CONTACTS_UPDATE',
   'CHATS_UPSERT',
   'CHATS_UPDATE',
   'CALL',

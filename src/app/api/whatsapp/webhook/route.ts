@@ -13,7 +13,11 @@ import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply'
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver'
-import { syncContactAvatar, syncContactProfile } from '@/lib/whatsapp/avatar'
+import {
+  syncContactAvatar,
+  syncContactProfile,
+  storeAvatarFromUrl,
+} from '@/lib/whatsapp/avatar'
 
 // The `after()` callback runs within this route's max duration. Inbound
 // processing can fan out to per-media downloads + storage uploads, so give
@@ -154,10 +158,62 @@ async function processEvolutionEvent(body: EvolutionWebhookBody) {
       await handleLabelEdit(instance, body.data)
       break
 
+    case 'contacts.update':
+      await handleContactsUpdate(instance, body.data)
+      break
+
     // qrcode.updated, contacts.upsert, send.message (our own echoes),
     // presence.update, etc. — intentionally ignored here.
     default:
       break
+  }
+}
+
+// ============================================================
+// Contact profile updates (auto-refresh avatar + name)
+//
+// Baileys fires `contacts.update` (an ARRAY) when a contact changes their
+// profile picture or name; Evolution enriches each entry with a freshly
+// fetched `profilePicUrl`. The per-message single-object form of the same
+// event is bookkeeping noise, so we act on the array form only.
+// ============================================================
+async function handleContactsUpdate(instanceName: string, data: unknown) {
+  if (!Array.isArray(data)) return
+  const config = await resolveConfig(instanceName)
+  if (!config) return
+  const db = supabaseAdmin()
+
+  for (const raw of data) {
+    const c = (raw ?? {}) as {
+      remoteJid?: string
+      pushName?: string
+      profilePicUrl?: string
+    }
+    const jid = c.remoteJid ?? ''
+    if (!jid || jid.endsWith('@g.us') || jid === 'status@broadcast') continue
+    const phone = normalizePhone(jidToPhone(jid))
+    if (!phone) continue
+
+    const existing = await findExistingContact(db, config.account_id, phone)
+    if (!existing) continue
+
+    // Picture: re-host the fresh URL. We only act when a URL is present — an
+    // absent one can mean "removed" OR a transient fetch failure, so we
+    // never clear an existing avatar on absence (avoids false wipes).
+    if (c.profilePicUrl) {
+      await storeAvatarFromUrl(db, existing.id, c.profilePicUrl)
+    }
+
+    // Name: fill gaps only — sync the pushName when we have no real name
+    // yet (name is null or still equals the phone), but never clobber a name
+    // someone edited in the CRM. The filter enforces that server-side.
+    if (c.pushName) {
+      await db
+        .from('contacts')
+        .update({ name: c.pushName, updated_at: new Date().toISOString() })
+        .eq('id', existing.id)
+        .or(`name.is.null,name.eq.${phone}`)
+    }
   }
 }
 
@@ -200,7 +256,7 @@ async function handleGroupMessage(instanceName: string, data: any) {
   )
   if (!groupContact) return
 
-  // Enrich the group's name from WhatsApp the first time we see it.
+  // Enrich the group's name + picture from WhatsApp the first time we see it.
   if (groupContact.wasCreated) {
     const info = await fetchGroupInfo(instanceName, groupJid)
     if (info?.subject) {
@@ -208,6 +264,9 @@ async function handleGroupMessage(instanceName: string, data: any) {
         .from('contacts')
         .update({ name: info.subject, updated_at: new Date().toISOString() })
         .eq('id', groupContact.contact.id)
+    }
+    if (info?.pictureUrl) {
+      await storeAvatarFromUrl(supabaseAdmin(), groupContact.contact.id, info.pictureUrl)
     }
   }
 

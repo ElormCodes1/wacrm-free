@@ -66,12 +66,12 @@ export async function syncContactAvatar(
 }
 
 /**
- * Store a group's picture on the group contact. The group subject-picture
- * URL is already known (from group metadata), so we just download + re-host
- * it in `chat-media` (WhatsApp CDN URLs expire) and set `avatar_url`.
- * Returns the stored public URL, or null. Best-effort — never throws.
+ * Re-host a known picture URL onto a contact (1:1 or group). The URL is
+ * already in hand (from group metadata or a contacts.update event), so we
+ * just download it, store it in `chat-media` (WhatsApp CDN URLs expire) and
+ * set `avatar_url`. Returns the stored public URL, or null. Never throws.
  */
-export async function storeGroupAvatar(
+export async function storeAvatarFromUrl(
   db: SupabaseClient,
   contactId: string,
   pictureUrl: string | null | undefined,
