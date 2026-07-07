@@ -17,6 +17,17 @@ import { Textarea } from "@/components/ui/textarea";
 
 const BG_COLORS = ["#0f766e", "#1e3a8a", "#7c3aed", "#b91c1c", "#c2410c", "#334155"];
 
+// WhatsApp text-status fonts. Evolution requires a truthy font (its check
+// is `if (!font)`), so values are 1-5 — 0 is rejected as "missing". css is
+// an approximation for the composer preview only.
+const FONTS: { value: number; label: string; css: string }[] = [
+  { value: 1, label: "Serif", css: "Georgia, serif" },
+  { value: 2, label: "Script", css: "'Brush Script MT', cursive" },
+  { value: 3, label: "Mono", css: "ui-monospace, monospace" },
+  { value: 4, label: "Sans", css: "system-ui, sans-serif" },
+  { value: 5, label: "Cond.", css: "'Arial Narrow', sans-serif" },
+];
+
 type Tab = "text" | "image" | "video";
 
 /**
@@ -28,6 +39,8 @@ export function StatusComposer({ onPosted }: { onPosted?: () => void }) {
   const [tab, setTab] = useState<Tab>("text");
   const [text, setText] = useState("");
   const [bg, setBg] = useState(BG_COLORS[0]);
+  const [font, setFont] = useState(1);
+  const fontCss = (FONTS.find((f) => f.value === font) ?? FONTS[0]).css;
   const [mediaUrl, setMediaUrl] = useState("");
   const [caption, setCaption] = useState("");
   const [posting, setPosting] = useState(false);
@@ -41,7 +54,7 @@ export function StatusComposer({ onPosted }: { onPosted?: () => void }) {
   async function post() {
     const payload =
       tab === "text"
-        ? { type: "text", content: text.trim(), backgroundColor: bg }
+        ? { type: "text", content: text.trim(), backgroundColor: bg, font }
         : { type: tab, content: mediaUrl.trim(), caption: caption.trim() || undefined };
     if (!payload.content) {
       toast.error(tab === "text" ? "Enter some text." : `Enter a ${tab} URL.`);
@@ -99,7 +112,7 @@ export function StatusComposer({ onPosted }: { onPosted?: () => void }) {
             <div className="space-y-3">
               <div
                 className="flex min-h-24 items-center justify-center rounded-lg p-4 text-center text-lg font-medium text-white"
-                style={{ background: bg }}
+                style={{ background: bg, fontFamily: fontCss }}
               >
                 {text || "Your status…"}
               </div>
@@ -119,6 +132,23 @@ export function StatusComposer({ onPosted }: { onPosted?: () => void }) {
                     className={`size-7 rounded-full border-2 ${bg === c ? "border-foreground" : "border-transparent"}`}
                     style={{ background: c }}
                   />
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {FONTS.map((f) => (
+                  <button
+                    key={f.value}
+                    type="button"
+                    onClick={() => setFont(f.value)}
+                    style={{ fontFamily: f.css }}
+                    className={`rounded-md border px-2 py-1 text-xs ${
+                      font === f.value
+                        ? "border-foreground bg-muted"
+                        : "border-border text-muted-foreground"
+                    }`}
+                  >
+                    {f.label}
+                  </button>
                 ))}
               </div>
             </div>

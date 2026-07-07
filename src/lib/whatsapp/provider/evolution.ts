@@ -832,14 +832,20 @@ export async function sendStatus(args: {
   content: string
   caption?: string
   backgroundColor?: string
+  /** Text-status font style (0-5). Evolution REQUIRES this for text. */
+  font?: number
   /** Recipient JIDs; omit to post to all contacts. */
   statusJidList?: string[]
   allContacts?: boolean
 }): Promise<EvolutionSendResult> {
-  const { instanceName, type, content, caption, backgroundColor, statusJidList, allContacts } = args
+  const { instanceName, type, content, caption, backgroundColor, font, statusJidList, allContacts } =
+    args
   const body: Record<string, unknown> = { type, content }
   if (caption) body.caption = caption
   if (backgroundColor) body.backgroundColor = backgroundColor
+  // Evolution requires a font for text statuses, and its check is
+  // `if (!status.font)` — so 0 counts as missing. Coerce to 1-5.
+  if (type === 'text') body.font = font && font >= 1 && font <= 5 ? font : 1
   if (allContacts) body.allContacts = true
   else if (statusJidList) body.statusJidList = statusJidList
   const res = await evolutionFetch<EvolutionSendResponse>(
@@ -981,11 +987,11 @@ export async function resolveLid(
 }
 
 /** Query stored messages for a chat (for history backfill). */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function findMessages(args: {
   instanceName: string
   remoteJid: string
   limit?: number
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 }): Promise<any[]> {
   try {
     const data = await evolutionFetch<unknown>(

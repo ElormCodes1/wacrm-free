@@ -33,11 +33,14 @@ export async function POST(request: Request) {
     const accountId = profile?.account_id as string | undefined
     if (!accountId) return NextResponse.json({ error: 'No account' }, { status: 403 })
 
-    const { type, content, caption, backgroundColor } = (await request.json().catch(() => ({}))) as {
+    const { type, content, caption, backgroundColor, font } = (await request
+      .json()
+      .catch(() => ({}))) as {
       type?: 'text' | 'image' | 'video'
       content?: string
       caption?: string
       backgroundColor?: string
+      font?: number
     }
     if (!type || !['text', 'image', 'video'].includes(type)) {
       return NextResponse.json({ error: 'type must be text, image, or video' }, { status: 400 })
@@ -59,6 +62,7 @@ export async function POST(request: Request) {
         content,
         caption,
         backgroundColor,
+        font,
         allContacts: true,
       })
       messageId = res.messageId
