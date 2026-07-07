@@ -62,6 +62,10 @@ const CONTACT_TYPE_OPTIONS: { label: string; value: ContactType }[] = [
   { label: "Groups", value: "groups" },
 ];
 
+// Persist the inbox filters (status / chat-type / tags / company) across
+// reloads and navigation. Search is intentionally excluded — it's transient.
+const FILTERS_STORAGE_KEY = "wacrm:inbox:filters";
+
 export function ConversationList({
   activeConversationId,
   onSelect,
@@ -79,6 +83,67 @@ export function ConversationList({
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
+
+  // Restore persisted filters after mount. We deliberately do NOT read
+  // localStorage in the state initializers: the server renders with the
+  // defaults, so reading stored values synchronously would produce a
+  // hydration mismatch. This reconciles right after mount instead
+  // (mirrors the inbox contact-panel persistence). Restoring saved
+  // filters is a legitimate one-time sync, hence the block-level disable.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(FILTERS_STORAGE_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as Partial<{
+        filter: InboxFilter;
+        contactType: ContactType;
+        selectedTagIds: string[];
+        selectedCompany: string | null;
+      }>;
+      if (saved.filter && FILTER_OPTIONS.some((o) => o.value === saved.filter)) {
+        setFilter(saved.filter);
+      }
+      if (
+        saved.contactType &&
+        CONTACT_TYPE_OPTIONS.some((o) => o.value === saved.contactType)
+      ) {
+        setContactType(saved.contactType);
+      }
+      if (Array.isArray(saved.selectedTagIds)) {
+        setSelectedTagIds(
+          saved.selectedTagIds.filter((t): t is string => typeof t === "string"),
+        );
+      }
+      if (
+        typeof saved.selectedCompany === "string" ||
+        saved.selectedCompany === null
+      ) {
+        setSelectedCompany(saved.selectedCompany);
+      }
+    } catch {
+      // Corrupt or unavailable storage — keep the defaults.
+    }
+  }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Persist filters on change. Skips the first run so the mounted defaults
+  // don't clobber the stored values before the restore effect applies them.
+  const filtersHydratedRef = useRef(false);
+  useEffect(() => {
+    if (!filtersHydratedRef.current) {
+      filtersHydratedRef.current = true;
+      return;
+    }
+    try {
+      localStorage.setItem(
+        FILTERS_STORAGE_KEY,
+        JSON.stringify({ filter, contactType, selectedTagIds, selectedCompany }),
+      );
+    } catch {
+      // Best-effort persistence; ignore storage failures.
+    }
+  }, [filter, contactType, selectedTagIds, selectedCompany]);
 
   // Keep the latest callback in a ref so the fetch effect below can
   // have a stable, empty-dep identity. Previously the fetch useCallback
