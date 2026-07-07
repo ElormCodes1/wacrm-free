@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { StatusComposer } from "./status-composer";
 import { StoryViewer, type ViewerGroup } from "./story-viewer";
 import type { StatusFeed, StatusGroup } from "./types";
+import { toast } from "sonner";
 
 function initials(name: string): string {
   return name.trim().slice(0, 2).toUpperCase() || "?";
@@ -87,6 +88,20 @@ export function StatusView() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ids: [id] }),
     }).catch(() => {});
+  }, []);
+
+  const deleteStatus = useCallback(async (id: string) => {
+    const res = await fetch(`/api/whatsapp/status/${id}`, { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      toast.error(data.error ?? "Could not delete status");
+      return;
+    }
+    setFeed((prev) =>
+      prev ? { ...prev, mine: prev.mine.filter((s) => s.id !== id) } : prev,
+    );
+    setViewer(null);
+    toast.success("Status deleted");
   }, []);
 
   const contactGroups: ViewerGroup[] = useMemo(
@@ -190,6 +205,7 @@ export function StatusView() {
           startIndex={viewer.index}
           onClose={() => setViewer(null)}
           onViewed={markViewed}
+          onDelete={deleteStatus}
         />
       )}
     </div>

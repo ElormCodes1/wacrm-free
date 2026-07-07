@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { X, ChevronLeft, ChevronRight, Eye } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, Eye, Trash2, Loader2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import type { StatusItem } from "./types";
 
@@ -39,12 +39,16 @@ export function StoryViewer({
   startIndex,
   onClose,
   onViewed,
+  onDelete,
 }: {
   groups: ViewerGroup[];
   startIndex: number;
   onClose: () => void;
   onViewed: (id: string) => void;
+  /** Delete one of my own statuses (only shown for `group.isMine`). */
+  onDelete?: (id: string) => Promise<void> | void;
 }) {
+  const [deleting, setDeleting] = useState(false);
   const [groupIndex, setGroupIndex] = useState(startIndex);
   const [itemIndex, setItemIndex] = useState(0);
   const [progress, setProgress] = useState(0);
@@ -170,6 +174,29 @@ export function StoryViewer({
           </p>
           <p className="text-xs text-white/60">{timeAgo(item.posted_at)}</p>
         </div>
+        {group.isMine && onDelete && (
+          <button
+            type="button"
+            disabled={deleting}
+            onClick={async () => {
+              if (!window.confirm("Delete this status?")) return;
+              setDeleting(true);
+              try {
+                await onDelete(item.id);
+              } finally {
+                setDeleting(false);
+              }
+            }}
+            aria-label="Delete status"
+            className="rounded-full p-1.5 text-white/80 hover:bg-white/10 hover:text-white disabled:opacity-50"
+          >
+            {deleting ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Trash2 className="h-5 w-5" />
+            )}
+          </button>
+        )}
         <button
           type="button"
           onClick={onClose}
