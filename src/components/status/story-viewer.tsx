@@ -91,10 +91,17 @@ export function StoryViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupIndex, itemIndex]);
 
-  // Auto-advance timer for image/text. Video drives its own progress.
-  // Paused while the "seen by" panel is open.
+  // Auto-advance timer for image/text. Video and audio drive their own
+  // progress (via onTimeUpdate) and advance on ended, so they opt out of
+  // this fixed timer. Paused while the "seen by" panel is open.
   useEffect(() => {
-    if (!item || item.content_type === "video" || showViewers) return;
+    if (
+      !item ||
+      item.content_type === "video" ||
+      item.content_type === "audio" ||
+      showViewers
+    )
+      return;
     const start = performance.now();
     let raf = 0;
     const tick = (now: number) => {
@@ -195,7 +202,18 @@ export function StoryViewer({
           )
         ) : item.content_type === "audio" ? (
           item.media_url ? (
-            <audio src={item.media_url} controls autoPlay className="w-4/5" onEnded={next} />
+            <audio
+              src={item.media_url}
+              controls
+              autoPlay
+              className="w-4/5"
+              onEnded={next}
+              onTimeUpdate={(e) => {
+                const a = e.currentTarget;
+                if (a.duration && Number.isFinite(a.duration))
+                  setProgress(a.currentTime / a.duration);
+              }}
+            />
           ) : (
             <p className="text-white/60">Audio unavailable</p>
           )

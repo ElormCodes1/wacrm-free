@@ -36,7 +36,7 @@ export async function POST(request: Request) {
     const { type, content, caption, backgroundColor, font, configId } = (await request
       .json()
       .catch(() => ({}))) as {
-      type?: 'text' | 'image' | 'video'
+      type?: 'text' | 'image' | 'video' | 'audio'
       content?: string
       caption?: string
       backgroundColor?: string
@@ -44,8 +44,8 @@ export async function POST(request: Request) {
       /** whatsapp_config id to post from; falls back to the default number. */
       configId?: string
     }
-    if (!type || !['text', 'image', 'video'].includes(type)) {
-      return NextResponse.json({ error: 'type must be text, image, or video' }, { status: 400 })
+    if (!type || !['text', 'image', 'video', 'audio'].includes(type)) {
+      return NextResponse.json({ error: 'type must be text, image, video, or audio' }, { status: 400 })
     }
     if (!content) {
       return NextResponse.json({ error: 'content is required' }, { status: 400 })

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Plus, Upload } from "lucide-react";
+import { Loader2, Plus, Upload, Mic, Square, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -36,7 +36,12 @@ const FONTS: { value: number; label: string; css: string }[] = [
   { value: 5, label: "Cond.", css: "'Arial Narrow', sans-serif" },
 ];
 
-type Tab = "text" | "image" | "video";
+// Client-side Ogg/Opus encoder (vendored into /public, reused from the inbox
+// composer). WhatsApp renders Ogg/Opus as a playable voice note.
+const OPUS_ENCODER_PATH = "/opus/encoderWorker.min.js";
+const MAX_RECORD_SECONDS = 5 * 60;
+
+type Tab = "text" | "image" | "video" | "audio";
 
 interface WaNumber {
   id: string;
@@ -55,8 +60,9 @@ function numberLabel(n: WaNumber): string {
 }
 
 /**
- * Post to WhatsApp Status (Stories) — text, an uploaded/linked image, or an
- * uploaded/linked video, from a chosen connected number. Calls onPosted().
+ * Post to WhatsApp Status (Stories) — text, an uploaded/linked image or
+ * video, or a voice note (recorded or uploaded), from a chosen connected
+ * number. Calls onPosted().
  */
 export function StatusComposer({ onPosted }: { onPosted?: () => void }) {
   const [open, setOpen] = useState(false);
@@ -71,6 +77,13 @@ export function StatusComposer({ onPosted }: { onPosted?: () => void }) {
   const [posting, setPosting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
+
+  // Voice recording state (opus-recorder).
+  const [recording, setRecording] = useState(false);
+  const [recordSeconds, setRecordSeconds] = useState(0);
+  const recorderRef = useRef<import("opus-recorder").default | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cancelledRef = useRef(false);
 
   const [numbers, setNumbers] = useState<WaNumber[]>([]);
   const [configId, setConfigId] = useState<string>("");
@@ -98,18 +111,34 @@ export function StatusComposer({ onPosted }: { onPosted?: () => void }) {
     };
   }, [open]);
 
+  const clearTimer = useCallback(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = null;
+  }, []);
+
+  // Tear down a live recording on unmount / dialog close so the mic isn't leaked.
+  useEffect(() => {
+    if (!open) {
+      clearTimer();
+      void recorderRef.current?.stop().catch(() => {});
+      setRecording(false);
+    }
+    return () => {
+      clearTimer();
+      void recorderRef.current?.stop().catch(() => {});
+    };
+  }, [open, clearTimer]);
+
   function reset() {
     setText("");
     setMediaUrl("");
     setMediaName("");
     setCaption("");
+    setRecordSeconds(0);
   }
 
-  async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = ""; // allow re-picking the same file
-    if (!file) return;
-    const cap = tab === "video" ? MEDIA_MAX_BYTES_BY_KIND.video : MEDIA_MAX_BYTES_BY_KIND.image;
+  async function uploadFile(file: File, kind: "image" | "video" | "audio") {
+    const cap = MEDIA_MAX_BYTES_BY_KIND[kind];
     if (file.size > cap) {
       toast.error(`File too large (max ${Math.round(cap / 1024 / 1024)} MB).`);
       return;
@@ -126,13 +155,105 @@ export function StatusComposer({ onPosted }: { onPosted?: () => void }) {
     }
   }
 
+  async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-picking the same file
+    if (!file) return;
+    await uploadFile(file, tab === "video" ? "video" : tab === "audio" ? "audio" : "image");
+  }
+
+  // ---- Voice recording ----
+  const finalizeRecording = useCallback(async (bytes: Uint8Array) => {
+    const file = new File([bytes as unknown as BlobPart], `voice-${Date.now()}.ogg`, {
+      type: "audio/ogg",
+    });
+    if (file.size === 0) return; // cancelled / empty take
+    if (file.size > MEDIA_MAX_BYTES_BY_KIND.audio) {
+      toast.error("Recording is too long (over 16 MB).");
+      return;
+    }
+    setUploading(true);
+    try {
+      const { publicUrl } = await uploadAccountMedia("chat-media", file);
+      setMediaUrl(publicUrl);
+      setMediaName(file.name);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  }, []);
+
+  const startRecording = useCallback(async () => {
+    if (recording || uploading) return;
+    if (!navigator.mediaDevices?.getUserMedia || typeof AudioContext === "undefined") {
+      toast.error("Voice recording isn't supported in this browser.");
+      return;
+    }
+    try {
+      const { default: Recorder } = await import("opus-recorder");
+      const recorder = new Recorder({
+        encoderPath: OPUS_ENCODER_PATH,
+        numberOfChannels: 1,
+        encoderApplication: 2048, // VOIP — tuned for speech
+        encoderSampleRate: 48000,
+        streamPages: false,
+      });
+      cancelledRef.current = false;
+      recorder.ondataavailable = (bytes) => {
+        if (cancelledRef.current) return;
+        void finalizeRecording(bytes);
+      };
+      recorderRef.current = recorder;
+      await recorder.start();
+      setMediaUrl("");
+      setMediaName("");
+      setRecording(true);
+      setRecordSeconds(0);
+      timerRef.current = setInterval(() => setRecordSeconds((s) => s + 1), 1000);
+    } catch {
+      void recorderRef.current?.stop().catch(() => {});
+      recorderRef.current = null;
+      toast.error("Microphone access denied or unavailable.");
+    }
+  }, [recording, uploading, finalizeRecording]);
+
+  const stopRecording = useCallback(() => {
+    clearTimer();
+    setRecording(false);
+    void recorderRef.current?.stop().catch(() => {});
+  }, [clearTimer]);
+
+  const cancelRecording = useCallback(() => {
+    cancelledRef.current = true;
+    clearTimer();
+    setRecording(false);
+    setRecordSeconds(0);
+    void recorderRef.current?.stop().catch(() => {});
+  }, [clearTimer]);
+
+  // Auto-stop at the cap.
+  useEffect(() => {
+    if (recording && recordSeconds >= MAX_RECORD_SECONDS) stopRecording();
+  }, [recording, recordSeconds, stopRecording]);
+
   async function post() {
-    const payload =
-      tab === "text"
-        ? { type: "text", content: text.trim(), backgroundColor: bg, font, configId }
-        : { type: tab, content: mediaUrl.trim(), caption: caption.trim() || undefined, configId };
+    let payload: Record<string, unknown>;
+    if (tab === "text") {
+      payload = { type: "text", content: text.trim(), backgroundColor: bg, font, configId };
+    } else if (tab === "audio") {
+      payload = { type: "audio", content: mediaUrl.trim(), configId };
+    } else {
+      payload = { type: tab, content: mediaUrl.trim(), caption: caption.trim() || undefined, configId };
+    }
     if (!payload.content) {
-      toast.error(tab === "text" ? "Enter some text." : `Upload or link a ${tab}.`);
+      toast.error(
+        tab === "text"
+          ? "Enter some text."
+          : tab === "audio"
+            ? "Record or upload a voice note."
+            : `Upload or link a ${tab}.`,
+      );
       return;
     }
     setPosting(true);
@@ -190,14 +311,14 @@ export function StatusComposer({ onPosted }: { onPosted?: () => void }) {
           )}
 
           <div className="flex gap-1 rounded-lg bg-muted p-1 text-sm">
-            {(["text", "image", "video"] as const).map((t) => (
+            {(["text", "image", "video", "audio"] as const).map((t) => (
               <button
                 key={t}
                 type="button"
                 onClick={() => setTab(t)}
                 className={`flex-1 rounded-md py-1.5 capitalize ${tab === t ? "bg-background shadow-sm" : "text-muted-foreground"}`}
               >
-                {t}
+                {t === "audio" ? "Voice" : t}
               </button>
             ))}
           </div>
@@ -246,9 +367,68 @@ export function StatusComposer({ onPosted }: { onPosted?: () => void }) {
                 ))}
               </div>
             </div>
+          ) : tab === "audio" ? (
+            <div className="space-y-3">
+              {mediaUrl && !recording && (
+                <audio src={mediaUrl} controls className="w-full" />
+              )}
+
+              {recording ? (
+                <div className="flex items-center gap-3 rounded-lg border p-3">
+                  <span className="relative flex h-3 w-3">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
+                    <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
+                  </span>
+                  <span className="flex-1 text-sm tabular-nums">
+                    Recording… {Math.floor(recordSeconds / 60)}:
+                    {String(recordSeconds % 60).padStart(2, "0")}
+                  </span>
+                  <Button type="button" size="sm" variant="outline" onClick={cancelRecording}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                  <Button type="button" size="sm" onClick={stopRecording}>
+                    <Square className="mr-1 h-3.5 w-3.5" />
+                    Stop
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1"
+                    disabled={uploading}
+                    onClick={startRecording}
+                  >
+                    <Mic className="mr-1 h-4 w-4" />
+                    {mediaName?.startsWith("voice-") ? "Re-record" : "Record"}
+                  </Button>
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept="audio/*"
+                    className="hidden"
+                    onChange={onPickFile}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1"
+                    disabled={uploading}
+                    onClick={() => fileRef.current?.click()}
+                  >
+                    {uploading ? (
+                      <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Upload className="mr-1 h-4 w-4" />
+                    )}
+                    Upload
+                  </Button>
+                </div>
+              )}
+            </div>
           ) : (
             <div className="space-y-3">
-              {/* Preview when a media URL is set */}
               {mediaUrl &&
                 (tab === "image" ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -261,7 +441,6 @@ export function StatusComposer({ onPosted }: { onPosted?: () => void }) {
                   <video src={mediaUrl} className="max-h-40 w-full rounded-lg" controls />
                 ))}
 
-              {/* Upload from device */}
               <div>
                 <input
                   ref={fileRef}
@@ -289,7 +468,6 @@ export function StatusComposer({ onPosted }: { onPosted?: () => void }) {
                 )}
               </div>
 
-              {/* Or paste a link */}
               <div>
                 <Label htmlFor="statusmedia" className="text-xs text-muted-foreground">
                   …or paste a {tab} link
@@ -321,7 +499,7 @@ export function StatusComposer({ onPosted }: { onPosted?: () => void }) {
             <Button variant="outline" onClick={() => setOpen(false)} disabled={posting}>
               Cancel
             </Button>
-            <Button onClick={post} disabled={posting || uploading}>
+            <Button onClick={post} disabled={posting || uploading || recording}>
               {posting && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
               Post
             </Button>
