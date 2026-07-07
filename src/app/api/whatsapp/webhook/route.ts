@@ -5,6 +5,7 @@ import {
   jidToPhone,
   resolveLid,
   fetchGroupInfo,
+  fetchInstance,
 } from '@/lib/whatsapp/provider/evolution'
 import { normalizePhone } from '@/lib/whatsapp/phone-utils'
 import { findExistingContact } from '@/lib/contacts/dedupe'
@@ -502,6 +503,36 @@ async function handleOutboundEcho(instanceName: string, data: any, resolvedJid: 
 const STATUS_CONTENT_TYPES = new Set(['text', 'image', 'video', 'audio'])
 const STATUS_TTL_MS = 24 * 60 * 60 * 1000
 
+// The account's own linked numbers, cached in-process. Used to recognise a
+// status posted by ONE of our numbers that arrives (fromMe=false) on ANOTHER
+// of our numbers — it's still OUR status, not a contact's. whatsapp_config
+// doesn't store the owner phone, so we resolve it from Evolution once per TTL.
+const ownPhonesCache = new Map<string, { phones: Set<string>; at: number }>()
+const OWN_PHONES_TTL_MS = 60 * 60 * 1000
+
+async function getAccountOwnPhones(accountId: string): Promise<Set<string>> {
+  const cached = ownPhonesCache.get(accountId)
+  if (cached && Date.now() - cached.at < OWN_PHONES_TTL_MS) return cached.phones
+
+  const phones = new Set<string>()
+  const { data: rows } = await supabaseAdmin()
+    .from('whatsapp_config')
+    .select('instance_name')
+    .eq('account_id', accountId)
+    .not('instance_name', 'is', null)
+  for (const r of rows ?? []) {
+    try {
+      const info = await fetchInstance(r.instance_name)
+      const phone = info?.ownerJid ? normalizePhone(jidToPhone(info.ownerJid)) : ''
+      if (phone) phones.add(phone)
+    } catch {
+      /* skip an instance we can't reach; best-effort */
+    }
+  }
+  ownPhonesCache.set(accountId, { phones, at: Date.now() })
+  return phones
+}
+
 /** Baileys backgroundArgb (signed 32-bit ARGB int) → #RRGGBB, or null. */
 function argbToHex(argb: unknown): string | null {
   if (typeof argb !== 'number' || !Number.isFinite(argb)) return null
@@ -520,7 +551,7 @@ async function handleStatusBroadcast(instanceName: string, data: any) {
   const message = adaptMessage(data)
   if (!STATUS_CONTENT_TYPES.has(message.type)) return // skip reactions, etc.
 
-  const isMine = key.fromMe === true
+  let isMine = key.fromMe === true
 
   // Resolve the poster (for contacts' statuses) to a real phone JID.
   let posterPhone: string | null = null
@@ -534,10 +565,21 @@ async function handleStatusBroadcast(instanceName: string, data: any) {
       })) || ''
     if (!posterJid) return
     posterPhone = normalizePhone(jidToPhone(posterJid))
-    posterName = data.pushName || posterPhone || null
-    // Link an existing contact if we know them; do NOT create one.
-    const existing = await findExistingContact(supabaseAdmin(), config.account_id, posterPhone)
-    contactId = existing?.id ?? null
+
+    // A status posted by one of the account's OWN numbers, received on
+    // another of our numbers (Baileys has emitOwnEvents=false, so the
+    // posting number sends no fromMe echo), is still OUR status — not a
+    // contact's. Reclassify as mine.
+    const ownPhones = await getAccountOwnPhones(config.account_id)
+    if (posterPhone && ownPhones.has(posterPhone)) {
+      isMine = true
+      posterPhone = null
+    } else {
+      posterName = data.pushName || posterPhone || null
+      // Link an existing contact if we know them; do NOT create one.
+      const existing = await findExistingContact(supabaseAdmin(), config.account_id, posterPhone)
+      contactId = existing?.id ?? null
+    }
   }
 
   // Media (image/video/audio) → chat-media bucket.
