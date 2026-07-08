@@ -224,6 +224,19 @@ export interface Channel {
   updated_at: string;
 }
 
+export interface Community {
+  id: string;
+  account_id: string;
+  whatsapp_config_id: string | null;
+  community_jid: string;
+  subject: string;
+  description: string | null;
+  invite_code: string | null;
+  is_owner: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export type TaskStatus = 'pending' | 'done';
 
 export interface Task {

@@ -856,6 +856,108 @@ export async function deleteNewsletter(args: {
 }
 
 // ============================================================
+// Communities
+// ============================================================
+
+export interface CommunityInfo {
+  id: string
+  subject?: string
+  desc?: string
+  owner?: string
+  size?: number
+  linkedParent?: string
+}
+
+export async function createCommunity(args: {
+  instanceName: string
+  subject: string
+  description?: string
+}): Promise<CommunityInfo> {
+  return await evolutionFetch<CommunityInfo>(
+    `/community/create/${encodeURIComponent(args.instanceName)}`,
+    { method: 'POST', body: { subject: args.subject, description: args.description } },
+  )
+}
+
+export async function communityMetadata(args: {
+  instanceName: string
+  jid: string
+}): Promise<CommunityInfo | null> {
+  try {
+    return await evolutionFetch<CommunityInfo>(
+      `/community/metadata/${encodeURIComponent(args.instanceName)}`,
+      { method: 'POST', body: { jid: args.jid } },
+    )
+  } catch {
+    return null
+  }
+}
+
+export async function communityLinkedGroups(args: {
+  instanceName: string
+  jid: string
+}): Promise<unknown> {
+  return await evolutionFetch(
+    `/community/linkedGroups/${encodeURIComponent(args.instanceName)}`,
+    { method: 'POST', body: { jid: args.jid } },
+  )
+}
+
+export async function linkGroupToCommunity(args: {
+  instanceName: string
+  communityJid: string
+  groupJid: string
+}): Promise<void> {
+  await evolutionFetch(`/community/linkGroup/${encodeURIComponent(args.instanceName)}`, {
+    method: 'POST',
+    body: { communityJid: args.communityJid, groupJid: args.groupJid },
+  })
+}
+
+export async function unlinkGroupFromCommunity(args: {
+  instanceName: string
+  communityJid: string
+  groupJid: string
+}): Promise<void> {
+  await evolutionFetch(`/community/unlinkGroup/${encodeURIComponent(args.instanceName)}`, {
+    method: 'POST',
+    body: { communityJid: args.communityJid, groupJid: args.groupJid },
+  })
+}
+
+export async function updateCommunity(args: {
+  instanceName: string
+  jid: string
+  subject?: string
+  description?: string
+}): Promise<void> {
+  await evolutionFetch(`/community/update/${encodeURIComponent(args.instanceName)}`, {
+    method: 'POST',
+    body: { jid: args.jid, subject: args.subject, description: args.description },
+  })
+}
+
+export async function communityInviteCode(args: {
+  instanceName: string
+  jid: string
+}): Promise<{ inviteCode?: string; inviteUrl?: string | null }> {
+  return await evolutionFetch(
+    `/community/inviteCode/${encodeURIComponent(args.instanceName)}`,
+    { method: 'POST', body: { jid: args.jid } },
+  )
+}
+
+export async function leaveCommunity(args: {
+  instanceName: string
+  jid: string
+}): Promise<void> {
+  await evolutionFetch(`/community/leave/${encodeURIComponent(args.instanceName)}`, {
+    method: 'DELETE',
+    body: { jid: args.jid },
+  })
+}
+
+// ============================================================
 // Profile: own + contact enrichment
 // ============================================================
 
