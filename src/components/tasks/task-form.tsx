@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Trash2 } from "lucide-react";
+import { Trash2, CheckCircle2, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 
 interface ContactOption {
@@ -80,6 +80,7 @@ export function TaskForm({
 
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [completing, setCompleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   // Reset/populate the form every time the sheet opens or its inputs
@@ -219,6 +220,27 @@ export function TaskForm({
     onSaved();
   }
 
+  async function handleComplete() {
+    if (!task) return;
+    const isDone = task.status === "done";
+    setCompleting(true);
+    const { error } = await supabase
+      .from("tasks")
+      .update({
+        status: isDone ? "pending" : "done",
+        completed_at: isDone ? null : new Date().toISOString(),
+      })
+      .eq("id", task.id);
+    setCompleting(false);
+    if (error) {
+      toast.error("Failed to update task");
+      return;
+    }
+    toast.success(isDone ? "Task reopened" : "Task completed");
+    onOpenChange(false);
+    onSaved();
+  }
+
   async function handleDelete() {
     if (!task) return;
     setDeleting(true);
@@ -328,6 +350,29 @@ export function TaskForm({
           </div>
 
           <div className="border-t border-border/50 bg-popover/80 p-4">
+            {task && (
+              <Button
+                onClick={handleComplete}
+                disabled={completing}
+                className={
+                  task.status === "done"
+                    ? "mb-2 w-full border border-border bg-transparent text-muted-foreground hover:bg-muted"
+                    : "mb-2 w-full bg-positive text-white hover:bg-positive/90"
+                }
+              >
+                {task.status === "done" ? (
+                  <>
+                    <RotateCcw className="h-4 w-4" />
+                    {completing ? "Reopening..." : "Mark as not done"}
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-4 w-4" />
+                    {completing ? "Completing..." : "Mark as done"}
+                  </>
+                )}
+              </Button>
+            )}
             <div className="flex gap-2">
               <Button
                 variant="outline"
