@@ -26,6 +26,7 @@ import {
   ListTodo,
   Square,
   CheckSquare,
+  Star,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -34,6 +35,28 @@ import { toast } from "sonner";
 import { GroupInfoPanel } from "./group-info-panel";
 import { contactDisplayName } from "@/lib/inbox/contact-name";
 import { TaskForm } from "@/components/tasks/task-form";
+
+interface StarredMessage {
+  id: string;
+  content_text: string | null;
+  content_type: string | null;
+  created_at: string;
+}
+
+// Fallback label for a starred message with no text (media, etc.).
+const MEDIA_LABELS: Record<string, string> = {
+  image: "📷 Photo",
+  video: "🎬 Video",
+  audio: "🎤 Voice message",
+  document: "📄 Document",
+  location: "📍 Location",
+  contact: "👤 Contact",
+  poll: "📊 Poll",
+  call: "📞 Call",
+};
+function starredLabel(m: StarredMessage): string {
+  return m.content_text || MEDIA_LABELS[m.content_type ?? ""] || "Message";
+}
 
 interface ContactSidebarProps {
   contact: Contact | null;
@@ -52,6 +75,7 @@ export function ContactSidebar({
   const [tasks, setTasks] = useState<Task[]>([]);
   const [taskFormOpen, setTaskFormOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [starred, setStarred] = useState<StarredMessage[]>([]);
   const [notes, setNotes] = useState<ContactNote[]>([]);
   const [tags, setTags] = useState<(Tag & { contact_tag_id: string })[]>([]);
   const [newNote, setNewNote] = useState("");
@@ -76,8 +100,8 @@ export function ContactSidebar({
 
     const supabase = createClient();
 
-    // Fetch deals, notes, tags, and tasks in parallel
-    const [dealsRes, notesRes, tagsRes, tasksRes] = await Promise.all([
+    // Fetch deals, notes, tags, tasks, and starred messages in parallel
+    const [dealsRes, notesRes, tagsRes, tasksRes, starredRes] = await Promise.all([
       supabase
         .from("deals")
         .select("*, stage:pipeline_stages(*)")
@@ -99,10 +123,18 @@ export function ContactSidebar({
         // pending before done ('pending' > 'done'), then soonest due first.
         .order("status", { ascending: false })
         .order("due_date", { nullsFirst: false }),
+      supabase
+        .from("messages")
+        .select("id, content_text, content_type, created_at, conversation:conversations!inner(contact_id)")
+        .eq("conversation.contact_id", contact.id)
+        .not("starred_at", "is", null)
+        .order("starred_at", { ascending: false })
+        .limit(50),
     ]);
 
     if (dealsRes.data) setDeals(dealsRes.data);
     if (tasksRes.data) setTasks(tasksRes.data as Task[]);
+    if (starredRes.data) setStarred(starredRes.data as unknown as StarredMessage[]);
     if (notesRes.data) setNotes(notesRes.data);
     if (tagsRes.data) {
       const mapped = tagsRes.data
@@ -646,6 +678,35 @@ export function ContactSidebar({
                     </p>
                   </div>
                 ))}
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div className="my-4 border-t border-border" />
+
+            {/* Starred messages */}
+            <div>
+              <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                <Star className="h-3 w-3" />
+                Starred
+              </div>
+              <div className="mt-2 space-y-2">
+                {starred.length === 0 ? (
+                  <p className="px-1 text-xs text-muted-foreground">
+                    No starred messages
+                  </p>
+                ) : (
+                  starred.map((m) => (
+                    <div key={m.id} className="rounded-lg bg-muted px-3 py-2">
+                      <p className="line-clamp-3 whitespace-pre-wrap text-xs text-foreground">
+                        {starredLabel(m)}
+                      </p>
+                      <p className="mt-1 text-[10px] text-muted-foreground">
+                        {format(new Date(m.created_at), "MMM d, yyyy HH:mm")}
+                      </p>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>

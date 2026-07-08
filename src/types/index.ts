@@ -279,6 +279,8 @@ export interface Message {
   deleted_at?: string | null;
   /** Set when the message text was edited after sending. */
   edited_at?: string | null;
+  /** Set when the message is starred (bookmarked). NULL = not starred. */
+  starred_at?: string | null;
   /** For inbound group messages: the member who sent it. */
   author_name?: string | null;
   author_phone?: string | null;

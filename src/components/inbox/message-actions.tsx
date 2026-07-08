@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { CornerUpLeft, Copy, SmilePlus, Pencil, Trash2, Forward } from "lucide-react";
+import { CornerUpLeft, Copy, SmilePlus, Pencil, Trash2, Forward, Star } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -25,6 +25,10 @@ interface MessageActionsProps {
   onDelete?: () => void;
   /** Forward this message to another conversation. */
   onForward?: () => void;
+  /** Toggle the message's starred (bookmarked) state. */
+  onStar?: () => void;
+  /** Whether the message is currently starred. */
+  isStarred?: boolean;
   children: ReactNode;
 }
 
@@ -40,6 +44,8 @@ export function MessageActions({
   onEdit,
   onDelete,
   onForward,
+  onStar,
+  isStarred,
   children,
 }: MessageActionsProps) {
   // Touch devices have no hover. Long-press fires `contextmenu`; we capture
@@ -163,6 +169,26 @@ export function MessageActions({
         >
           <Copy className="h-3.5 w-3.5" />
         </button>
+        {onStar && !message.deleted_at && (
+          <button
+            type="button"
+            onClick={() => {
+              onStar();
+              setTouchOpen(false);
+            }}
+            className={cn(
+              "flex h-5 w-5 items-center justify-center rounded-full hover:bg-muted",
+              isStarred
+                ? "text-amber-400"
+                : "text-popover-foreground hover:text-foreground",
+            )}
+            aria-label={isStarred ? "Unstar" : "Star"}
+          >
+            <Star
+              className={cn("h-3.5 w-3.5", isStarred && "fill-current")}
+            />
+          </button>
+        )}
         {isAgent &&
           onEdit &&
           message.content_type === "text" &&

@@ -37,7 +37,8 @@ that break on every base-image bump. So "patch Evolution" is real work with
 real fragility — prefer CRM-local when the value is inbox-organization.
 
 ## Tier 2 — patch Evolution (Baileys has it, Evolution REST doesn't)
-- [x] **Chat actions: pin + mute** — ✅ DONE **CRM-local** (migration 042: pinned_at/muted_until; thread menu; pinned-first sort; greyed unread + mute icon). WhatsApp-phone mirror (chatModify pin/mute via a bundle patch) deferred — brittle, and CRM-queue organization is arguably better done CRM-side anyway. star-message/clear/delete still open.
+- [x] **Chat actions: pin + mute** — ✅ DONE **CRM-local** (migration 042: pinned_at/muted_until; thread menu; pinned-first sort; greyed unread + mute icon). WhatsApp-phone mirror (chatModify pin/mute via a bundle patch) deferred — brittle, and CRM-queue organization is arguably better done CRM-side anyway.
+- [x] **Star messages** — ✅ DONE **CRM-local** (migration 043: messages.starred_at; star in the message hover toolbar; ⭐ indicator on the bubble; findable "Starred" section in the contact sidebar). clear/delete-chat still open.
 - [ ] **🏪 Store / catalog management** (commerce moat) — product create/edit/delete, edit business profile (hours/category/website/address), cover photo, order details. Only in Baileys → patch Evolution. [PATCH]
 - [ ] **Channels / Newsletters** — create, follow/unfollow, mute, post, react, fetch messages. Baileys newsletter* methods. [PATCH] (or [WAHA])
 - [ ] **Communities** — create, link/unlink groups, announcements, join-request approvals. Baileys community* methods. [PATCH]

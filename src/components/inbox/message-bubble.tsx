@@ -17,6 +17,7 @@ import {
   UserRound,
   BarChart3,
   PhoneCall,
+  Star,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ReplyQuote } from "./reply-quote";
@@ -378,6 +379,15 @@ export function MessageBubble({
             isAgent ? "justify-end" : "justify-start",
           )}
         >
+          {message.starred_at && (
+            <Star
+              className={cn(
+                "h-2.5 w-2.5 fill-current",
+                isAgent ? "text-bubble-out-foreground/70" : "text-amber-400",
+              )}
+              aria-label="Starred"
+            />
+          )}
           <span
             className={cn(
               "text-[10px]",

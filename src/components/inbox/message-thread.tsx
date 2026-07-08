@@ -742,6 +742,27 @@ export function MessageThread({
     [onRefresh],
   );
 
+  // Star / unstar a message (CRM-local bookmark). Optimistic — the updated
+  // array is lifted to the parent so the thread + sidebar re-render at once.
+  const handleToggleStar = useCallback(
+    async (msg: Message) => {
+      const starred_at = msg.starred_at ? null : new Date().toISOString();
+      onMessagesLoadedRef.current(
+        messages.map((m) => (m.id === msg.id ? { ...m, starred_at } : m)),
+      );
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("messages")
+        .update({ starred_at })
+        .eq("id", msg.id);
+      if (error) {
+        toast.error("Failed to update star");
+        onMessagesLoadedRef.current(messages);
+      }
+    },
+    [messages],
+  );
+
   const router = useRouter();
 
   // Open the Tasks page with the new-task dialog pre-linked to this chat.
@@ -1251,6 +1272,8 @@ export function MessageThread({
                         onEdit={() => handleEditMessage(msg)}
                         onDelete={() => handleDeleteMessage(msg)}
                         onForward={() => setForwardMsgId(msg.id)}
+                        onStar={() => handleToggleStar(msg)}
+                        isStarred={!!msg.starred_at}
                       >
                         <MessageBubble
                           message={msg}
