@@ -11,6 +11,7 @@ import type {
   Tag,
   Pipeline,
   PipelineStage,
+  Task,
 } from "@/types";
 import {
   Phone,
@@ -22,6 +23,9 @@ import {
   StickyNote,
   Plus,
   Loader2,
+  ListTodo,
+  Square,
+  CheckSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -29,6 +33,7 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import { GroupInfoPanel } from "./group-info-panel";
 import { contactDisplayName } from "@/lib/inbox/contact-name";
+import { TaskForm } from "@/components/tasks/task-form";
 
 interface ContactSidebarProps {
   contact: Contact | null;
@@ -44,6 +49,9 @@ export function ContactSidebar({
   const { accountId, defaultCurrency } = useAuth();
   const [copied, setCopied] = useState(false);
   const [deals, setDeals] = useState<Deal[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [taskFormOpen, setTaskFormOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [notes, setNotes] = useState<ContactNote[]>([]);
   const [tags, setTags] = useState<(Tag & { contact_tag_id: string })[]>([]);
   const [newNote, setNewNote] = useState("");
@@ -68,8 +76,8 @@ export function ContactSidebar({
 
     const supabase = createClient();
 
-    // Fetch deals, notes, and tags in parallel
-    const [dealsRes, notesRes, tagsRes] = await Promise.all([
+    // Fetch deals, notes, tags, and tasks in parallel
+    const [dealsRes, notesRes, tagsRes, tasksRes] = await Promise.all([
       supabase
         .from("deals")
         .select("*, stage:pipeline_stages(*)")
@@ -84,9 +92,17 @@ export function ContactSidebar({
         .from("contact_tags")
         .select("id, tag_id, tags(*)")
         .eq("contact_id", contact.id),
+      supabase
+        .from("tasks")
+        .select("*")
+        .eq("contact_id", contact.id)
+        // pending before done ('pending' > 'done'), then soonest due first.
+        .order("status", { ascending: false })
+        .order("due_date", { nullsFirst: false }),
     ]);
 
     if (dealsRes.data) setDeals(dealsRes.data);
+    if (tasksRes.data) setTasks(tasksRes.data as Task[]);
     if (notesRes.data) setNotes(notesRes.data);
     if (tagsRes.data) {
       const mapped = tagsRes.data
@@ -98,6 +114,30 @@ export function ContactSidebar({
       setTags(mapped);
     }
   }, [contact]);
+
+  const toggleTask = useCallback(
+    async (task: Task) => {
+      const done = task.status !== "done";
+      const completed_at = done ? new Date().toISOString() : null;
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === task.id
+            ? { ...t, status: done ? "done" : "pending", completed_at }
+            : t,
+        ),
+      );
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("tasks")
+        .update({ status: done ? "done" : "pending", completed_at })
+        .eq("id", task.id);
+      if (error) {
+        toast.error("Failed to update task");
+        fetchContactData();
+      }
+    },
+    [fetchContactData],
+  );
 
   // Load on contact change. setContactData/setTags run inside async
   // Supabase callbacks, not synchronously in the effect body.
@@ -488,6 +528,79 @@ export function ContactSidebar({
               )}
             </div>
           </div>
+
+          {/* Divider */}
+          <div className="my-4 border-t border-border" />
+
+          {/* Tasks */}
+          <div>
+            <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              <ListTodo className="h-3 w-3" />
+              Tasks
+            </div>
+            <div className="mt-2 space-y-2">
+              {tasks.length === 0 ? (
+                <p className="px-1 text-xs text-muted-foreground">No tasks</p>
+              ) : (
+                tasks.map((t) => {
+                  const done = t.status === "done";
+                  return (
+                    <div
+                      key={t.id}
+                      className="flex items-start gap-2 rounded-lg bg-muted px-3 py-2"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => toggleTask(t)}
+                        aria-label={done ? "Mark task pending" : "Mark task done"}
+                        className="mt-0.5 shrink-0 text-muted-foreground hover:text-primary"
+                      >
+                        {done ? (
+                          <CheckSquare className="h-4 w-4 text-primary" />
+                        ) : (
+                          <Square className="h-4 w-4" />
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingTask(t);
+                          setTaskFormOpen(true);
+                        }}
+                        className="min-w-0 flex-1 text-left"
+                      >
+                        <p
+                          className={`text-sm ${
+                            done
+                              ? "text-muted-foreground line-through"
+                              : "text-foreground"
+                          }`}
+                        >
+                          {t.title}
+                        </p>
+                        {t.due_date && (
+                          <p className="mt-0.5 text-[11px] text-muted-foreground">
+                            {format(new Date(t.due_date), "MMM d, HH:mm")}
+                          </p>
+                        )}
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingTask(null);
+                  setTaskFormOpen(true);
+                }}
+                className="flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-border px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"
+              >
+                <Plus className="h-3 w-3" />
+                Add task
+              </button>
+            </div>
+          </div>
             </>
           )}
 
@@ -538,6 +651,14 @@ export function ContactSidebar({
           </div>
         </div>
       </ScrollArea>
+
+      <TaskForm
+        open={taskFormOpen}
+        onOpenChange={setTaskFormOpen}
+        task={editingTask}
+        defaults={{ contactId: contact.id }}
+        onSaved={fetchContactData}
+      />
     </div>
   );
 }

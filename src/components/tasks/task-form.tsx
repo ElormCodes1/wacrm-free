@@ -108,6 +108,28 @@ export function TaskForm({
   }, [open, task, defaults]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
+  // When creating a task for a contact, default the deal to that contact's
+  // deal (the oldest, if they have several) — the user can still change it.
+  // No deals for the contact → leave it on "No deal". Edit mode keeps the
+  // task's saved deal untouched.
+  useEffect(() => {
+    if (!open || task || !contactId) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("deals")
+        .select("id")
+        .eq("contact_id", contactId)
+        .order("created_at", { ascending: true })
+        .limit(1);
+      if (cancelled) return;
+      setDealId((data?.[0]?.id as string) ?? "");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, contactId, task, supabase]);
+
   // Load supporting data (assignees, contacts, deals) once the sheet opens.
   useEffect(() => {
     if (!open) return;
