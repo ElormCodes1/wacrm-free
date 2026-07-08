@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { usePresence } from "@/hooks/use-presence";
@@ -32,6 +33,7 @@ import {
   Ban,
   EyeOff,
   Eye,
+  ListTodo,
   Users,
 } from "lucide-react";
 import { format, isToday, isYesterday } from "date-fns";
@@ -736,6 +738,16 @@ export function MessageThread({
     [onRefresh],
   );
 
+  const router = useRouter();
+
+  // Open the Tasks page with the new-task dialog pre-linked to this chat.
+  const createTask = useCallback(() => {
+    if (!conversation) return;
+    const params = new URLSearchParams({ new: "1", conversation: conversation.id });
+    if (contact?.id) params.set("contact", contact.id);
+    router.push(`/tasks?${params.toString()}`);
+  }, [conversation, contact, router]);
+
   // Conversation-level actions (archive, mark unread, block).
   const conversationAction = useCallback(
     async (
@@ -1105,6 +1117,11 @@ export function MessageThread({
               <MoreVertical className="h-4 w-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="border-border bg-popover">
+              <DropdownMenuItem onClick={createTask} className="text-sm">
+                <ListTodo className="mr-2 h-4 w-4" />
+                Create task
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               {conversation?.archived_at ? (
                 <DropdownMenuItem onClick={() => conversationAction("unarchive")} className="text-sm">
                   <Archive className="mr-2 h-4 w-4" />

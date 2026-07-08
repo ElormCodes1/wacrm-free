@@ -207,6 +207,31 @@ export interface Notification {
   created_at: string;
 }
 
+export type TaskStatus = 'pending' | 'done';
+
+export interface Task {
+  id: string;
+  account_id: string;
+  /** Creator (auth uid). */
+  user_id: string | null;
+  /** Assignee — a profile in the account (profiles.id), or null. */
+  assigned_to: string | null;
+  contact_id: string | null;
+  conversation_id: string | null;
+  deal_id: string | null;
+  title: string;
+  notes: string | null;
+  due_date: string | null;
+  status: TaskStatus;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+  // Optional embedded relations (from the list query).
+  contact?: { id: string; name: string | null; phone: string } | null;
+  assignee?: { id: string; full_name: string | null; email: string | null } | null;
+  deal?: { id: string; title: string } | null;
+}
+
 export type SenderType = 'customer' | 'agent' | 'bot';
 export type ContentType =
   | 'text'

@@ -17,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ModeToggle } from "@/components/layout/mode-toggle";
+import { NotificationBell } from "@/components/layout/notification-bell";
 
 const pageTitles: Record<string, string> = {
   "/dashboard": "Dashboard",
@@ -71,6 +72,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-1 sm:gap-2">
+        <NotificationBell />
         <ModeToggle />
 
         <DropdownMenu>
