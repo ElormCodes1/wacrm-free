@@ -76,6 +76,7 @@ export async function POST(request: Request) {
       template_params,
       template_message_params,
       reply_to_message_id,
+      view_once,
     } = body
 
     if ((!conversationIdInput && !contact_id) || !message_type) {
@@ -181,6 +182,7 @@ export async function POST(request: Request) {
         templateParams: template_params,
         templateMessageParams: template_message_params,
         replyToMessageId: reply_to_message_id,
+        viewOnce: view_once === true,
       })
 
       return NextResponse.json({

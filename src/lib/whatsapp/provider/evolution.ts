@@ -387,10 +387,13 @@ export interface SendMediaArgs {
   fileName?: string
   mimetype?: string
   quotedMessageId?: string
+  /** Send as a "view once" message (image/video only) — disappears after
+   *  the recipient opens it once. */
+  viewOnce?: boolean
 }
 
 export async function sendMedia(args: SendMediaArgs): Promise<EvolutionSendResult> {
-  const { instanceName, to, kind, media, caption, fileName, mimetype, quotedMessageId } = args
+  const { instanceName, to, kind, media, caption, fileName, mimetype, quotedMessageId, viewOnce } = args
   if (!media) throw new Error('sendMedia requires a media URL or base64 string.')
 
   // Audio (voice notes) uses a dedicated endpoint in Evolution and takes
@@ -411,6 +414,7 @@ export async function sendMedia(args: SendMediaArgs): Promise<EvolutionSendResul
   if (caption) body.caption = caption
   if (fileName) body.fileName = fileName
   if (mimetype) body.mimetype = mimetype
+  if (viewOnce) body.viewOnce = true
   if (quotedMessageId) body.quoted = { key: { id: quotedMessageId } }
 
   const res = await evolutionFetch<EvolutionSendResponse>(

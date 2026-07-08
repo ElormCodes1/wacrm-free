@@ -17,6 +17,7 @@ import {
   FileText,
   Mic,
   Square,
+  Eye,
   X,
   Loader2,
   Sparkles,
@@ -72,6 +73,9 @@ export interface SendMediaPayload {
   /** True when this video should be sent as a round PTV "video note"
    *  (Evolution /message/sendPtv) rather than a normal video attachment. */
   isPtv?: boolean;
+  /** Send this image/video as "view once" — disappears after the
+   *  recipient opens it once. */
+  viewOnce?: boolean;
   replyToId?: string;
 }
 
@@ -103,6 +107,8 @@ interface MediaDraft {
   /** A `video` draft staged as a round PTV note (no caption, sent via
    *  the sendPtv endpoint). */
   isPtv?: boolean;
+  /** Image/video staged to send as "view once". */
+  viewOnce?: boolean;
 }
 
 interface MessageComposerProps {
@@ -447,6 +453,7 @@ export function MessageComposer({
           : draft.caption.trim() || undefined,
       filename: draft.kind === "document" ? draft.filename : undefined,
       isPtv: draft.isPtv,
+      viewOnce: draft.viewOnce,
       replyToId: replyTo?.id,
     });
     // The object is now owned by the sent message — clear without GC.
@@ -462,6 +469,10 @@ export function MessageComposer({
 
   const setCaption = useCallback((caption: string) => {
     setDraft((d) => (d ? { ...d, caption } : d));
+  }, []);
+
+  const toggleViewOnce = useCallback(() => {
+    setDraft((d) => (d ? { ...d, viewOnce: !d.viewOnce } : d));
   }, []);
 
   // ---- Render --------------------------------------------------------
@@ -525,6 +536,7 @@ export function MessageComposer({
           busy={busy}
           readOnly={readOnly}
           onCaptionChange={setCaption}
+          onToggleViewOnce={toggleViewOnce}
           onDiscard={discardDraft}
           onSend={sendDraft}
         />
@@ -702,6 +714,7 @@ function MediaDraftPreview({
   busy,
   readOnly,
   onCaptionChange,
+  onToggleViewOnce,
   onDiscard,
   onSend,
 }: {
@@ -709,9 +722,14 @@ function MediaDraftPreview({
   busy: boolean;
   readOnly: boolean;
   onCaptionChange: (caption: string) => void;
+  onToggleViewOnce: () => void;
   onDiscard: () => void;
   onSend: () => void;
 }) {
+  // View-once applies to photos & normal videos (not documents, audio, or
+  // round video notes).
+  const canViewOnce =
+    draft.kind === "image" || (draft.kind === "video" && !draft.isPtv);
   return (
     <div className="rounded-xl border border-border bg-muted/40 p-3">
       <div className="flex items-start gap-3">
@@ -750,14 +768,37 @@ function MediaDraftPreview({
             </div>
           )}
         </div>
-        <button
-          type="button"
-          onClick={onDiscard}
-          aria-label="Remove attachment"
-          className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-        >
-          <X className="h-4 w-4" />
-        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          {canViewOnce && (
+            <button
+              type="button"
+              onClick={onToggleViewOnce}
+              aria-pressed={draft.viewOnce === true}
+              title={
+                draft.viewOnce
+                  ? "View once is on — tap to send normally"
+                  : "Send as view once (disappears after opening)"
+              }
+              className={cn(
+                "inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] transition-colors",
+                draft.viewOnce
+                  ? "border-primary/50 bg-primary/10 text-primary"
+                  : "border-border text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Eye className="h-3 w-3" />
+              1
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onDiscard}
+            aria-label="Remove attachment"
+            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       <div className="mt-2 flex items-end gap-2">

@@ -836,7 +836,16 @@ async function resolveConfig(
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function adaptMessage(data: any): WhatsAppMessage {
   const key = data.key
-  const m = data.message ?? {}
+  // "View once" media (disappearing photos/videos) arrives wrapped in a
+  // viewOnceMessage[V2] envelope — unwrap it so the inner image/video is
+  // detected like any other. (Media download unwraps it on Evolution's
+  // side too, so `_raw` stays the original wrapped message.)
+  const outer = data.message ?? {}
+  const m =
+    outer.viewOnceMessageV2?.message ??
+    outer.viewOnceMessage?.message ??
+    outer.viewOnceMessageV2Extension?.message ??
+    outer
   const base: WhatsAppMessage = {
     id: key.id,
     from: jidToPhone(key.remoteJid),

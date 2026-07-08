@@ -72,6 +72,8 @@ export interface SendMessageParams {
   /** Structured template params (header/body/buttons). */
   templateMessageParams?: unknown;
   replyToMessageId?: string | null;
+  /** Send image/video as "view once" (disappears after one open). */
+  viewOnce?: boolean;
 }
 
 export interface SendMessageResult {
@@ -201,6 +203,7 @@ export async function sendMessageToConversation(
     templateLanguage,
     templateParams,
     replyToMessageId,
+    viewOnce,
   } = params;
 
   if (!conversationId) {
@@ -365,6 +368,9 @@ export async function sendMessageToConversation(
         caption: contentText || undefined,
         fileName: filename || undefined,
         quotedMessageId: contextMessageId,
+        // View-once only applies to image/video; harmless on others (the
+        // composer only offers it for those two).
+        viewOnce: viewOnce || undefined,
       });
       return result.messageId;
     }
