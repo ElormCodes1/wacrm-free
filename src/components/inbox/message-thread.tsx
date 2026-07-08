@@ -797,6 +797,44 @@ export function MessageThread({
     [messages],
   );
 
+  // Pin / unpin a message in the chat (WhatsApp pin-in-chat — visible to
+  // the contact). Unlike star, WhatsApp is the source of truth here, so the
+  // server route does the send + persists pinned_until; we reconcile to it.
+  const handleTogglePin = useCallback(
+    async (msg: Message) => {
+      const isPinned = !!(msg.pinned_until && new Date(msg.pinned_until) > new Date());
+      const action = isPinned ? "unpin" : "pin";
+      const optimistic =
+        action === "pin" ? new Date(Date.now() + 604800 * 1000).toISOString() : null;
+      onMessagesLoadedRef.current(
+        messages.map((m) => (m.id === msg.id ? { ...m, pinned_until: optimistic } : m)),
+      );
+      try {
+        const res = await fetch("/api/whatsapp/message/pin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message_row_id: msg.id, action }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          toast.error(data.error ?? "Pin failed");
+          onMessagesLoadedRef.current(messages);
+          return;
+        }
+        onMessagesLoadedRef.current(
+          messages.map((m) =>
+            m.id === msg.id ? { ...m, pinned_until: data.pinned_until ?? null } : m,
+          ),
+        );
+        toast.success(action === "pin" ? "Message pinned" : "Message unpinned");
+      } catch {
+        toast.error("Pin failed");
+        onMessagesLoadedRef.current(messages);
+      }
+    },
+    [messages],
+  );
+
   // In-conversation search — ids of messages whose text contains the query,
   // in thread order. Client-side over the already-loaded messages.
   const matchIds = useMemo(() => {
@@ -1464,6 +1502,10 @@ export function MessageThread({
                           onForward={() => setForwardMsgId(msg.id)}
                           onStar={() => handleToggleStar(msg)}
                           isStarred={!!msg.starred_at}
+                          onPin={() => handleTogglePin(msg)}
+                          isPinned={
+                            !!(msg.pinned_until && new Date(msg.pinned_until) > new Date())
+                          }
                         >
                           <MessageBubble
                             message={msg}

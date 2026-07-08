@@ -810,6 +810,30 @@ export async function muteChat(args: {
 }
 
 /** Star/unstar a message on WhatsApp (chatModify). */
+/** Pin or unpin a message in a chat (WhatsApp pin-in-chat — visible to
+ *  both sides). Backed by our patched Evolution `/message/pinMessage`
+ *  (Baileys pinInChatMessage). `duration` (seconds) applies to a pin. */
+export async function pinMessage(args: {
+  instanceName: string
+  to: string
+  chatJid: string
+  messageId: string
+  fromMe: boolean
+  action: 'pin' | 'unpin'
+  duration?: 86400 | 604800 | 2592000
+}): Promise<void> {
+  const body: Record<string, unknown> = {
+    number: args.to,
+    key: { id: args.messageId, fromMe: args.fromMe, remoteJid: args.chatJid },
+    action: args.action,
+  }
+  if (args.action === 'pin' && args.duration) body.duration = args.duration
+  await evolutionFetch(`/message/pinMessage/${encodeURIComponent(args.instanceName)}`, {
+    method: 'POST',
+    body,
+  })
+}
+
 export async function starMessage(args: {
   instanceName: string
   chatJid: string

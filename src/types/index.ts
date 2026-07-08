@@ -309,6 +309,8 @@ export interface Message {
   edited_at?: string | null;
   /** Set when the message is starred (bookmarked). NULL = not starred. */
   starred_at?: string | null;
+  /** Expiry of a WhatsApp pin-in-chat (24h/7d/30d). NULL = not pinned. */
+  pinned_until?: string | null;
   /** For inbound group messages: the member who sent it. */
   author_name?: string | null;
   author_phone?: string | null;

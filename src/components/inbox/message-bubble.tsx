@@ -19,6 +19,7 @@ import {
   PhoneCall,
   Star,
   CalendarClock,
+  Pin,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ReplyQuote } from "./reply-quote";
@@ -406,6 +407,15 @@ export function MessageBubble({
                 isAgent ? "text-bubble-out-foreground/70" : "text-amber-400",
               )}
               aria-label="Starred"
+            />
+          )}
+          {message.pinned_until && new Date(message.pinned_until) > new Date() && (
+            <Pin
+              className={cn(
+                "h-2.5 w-2.5 fill-current",
+                isAgent ? "text-bubble-out-foreground/70" : "text-primary",
+              )}
+              aria-label="Pinned"
             />
           )}
           <span

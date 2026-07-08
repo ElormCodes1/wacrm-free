@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { CornerUpLeft, Copy, SmilePlus, Pencil, Trash2, Forward, Star } from "lucide-react";
+import { CornerUpLeft, Copy, SmilePlus, Pencil, Trash2, Forward, Star, Pin } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -29,6 +29,10 @@ interface MessageActionsProps {
   onStar?: () => void;
   /** Whether the message is currently starred. */
   isStarred?: boolean;
+  /** Toggle the message's WhatsApp pin-in-chat state. */
+  onPin?: () => void;
+  /** Whether the message is currently pinned. */
+  isPinned?: boolean;
   children: ReactNode;
 }
 
@@ -46,6 +50,8 @@ export function MessageActions({
   onForward,
   onStar,
   isStarred,
+  onPin,
+  isPinned,
   children,
 }: MessageActionsProps) {
   // Touch devices have no hover. Long-press fires `contextmenu`; we capture
@@ -187,6 +193,24 @@ export function MessageActions({
             <Star
               className={cn("h-3.5 w-3.5", isStarred && "fill-current")}
             />
+          </button>
+        )}
+        {onPin && !message.deleted_at && (
+          <button
+            type="button"
+            onClick={() => {
+              onPin();
+              setTouchOpen(false);
+            }}
+            className={cn(
+              "flex h-5 w-5 items-center justify-center rounded-full hover:bg-muted",
+              isPinned
+                ? "text-primary"
+                : "text-popover-foreground hover:text-foreground",
+            )}
+            aria-label={isPinned ? "Unpin" : "Pin"}
+          >
+            <Pin className={cn("h-3.5 w-3.5", isPinned && "fill-current")} />
           </button>
         )}
         {isAgent &&
