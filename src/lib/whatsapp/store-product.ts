@@ -1,4 +1,4 @@
-import { fetchCatalog } from '@/lib/whatsapp/provider/evolution'
+import { fetchCatalog, jidToPhone } from '@/lib/whatsapp/provider/evolution'
 
 export interface CatalogProduct {
   id: string
@@ -8,6 +8,17 @@ export interface CatalogProduct {
   description?: string
   /** Freshest product image URL (WhatsApp CDN). */
   imageUrl?: string
+  /** The business number that owns the catalog (digits) — for the product link. */
+  businessNumber?: string
+}
+
+/**
+ * WhatsApp's public deep link for a catalog product — opens the product in
+ * WhatsApp. Format: https://wa.me/p/<productId>/<businessPhoneNoPlus>.
+ */
+export function productLink(p: CatalogProduct): string | undefined {
+  if (!p.id || !p.businessNumber) return undefined
+  return `https://wa.me/p/${p.id}/${p.businessNumber}`
 }
 
 /**
@@ -22,6 +33,7 @@ export async function findCatalogProduct(
 ): Promise<CatalogProduct | null> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const catalog = (await fetchCatalog({ instanceName })) as any
+  const businessNumber = jidToPhone(catalog?.wuid) || undefined
   const list: unknown = catalog?.catalog ?? catalog?.products ?? []
   const arr = Array.isArray(list) ? list : []
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -38,15 +50,21 @@ export async function findCatalogProduct(
       p.imageUrls?.requested ??
       p.imageUrl ??
       p.images?.[0]?.url,
+    businessNumber,
   }
 }
 
-/** A human caption for sharing a product (to a status, etc.). */
+/**
+ * A caption for sharing a product (to a status, etc.). Ends with WhatsApp's
+ * tappable product link so viewers can open it in the catalog.
+ */
 export function productCaption(p: CatalogProduct): string {
   const lines = [p.name]
   if (typeof p.price === 'number') {
     lines.push(`${p.currency ? `${p.currency} ` : ''}${p.price.toLocaleString()}`)
   }
   if (p.description) lines.push(p.description)
+  const link = productLink(p)
+  if (link) lines.push(`🛒 ${link}`)
   return lines.join('\n')
 }
