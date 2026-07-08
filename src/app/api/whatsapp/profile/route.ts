@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getDefaultInstanceName } from '@/lib/whatsapp/resolve-send-target'
+import { instanceForConversation } from '@/lib/whatsapp/resolve-send-target'
 import {
   updateProfileName,
   updateProfileStatus,
@@ -31,15 +31,17 @@ export async function POST(request: Request) {
     const accountId = profile?.account_id as string | undefined
     if (!accountId) return NextResponse.json({ error: 'No account' }, { status: 403 })
 
-    const { name, status } = (await request.json().catch(() => ({}))) as {
+    const { name, status, config_id } = (await request.json().catch(() => ({}))) as {
       name?: string
       status?: string
+      /** Which connected number to edit; falls back to the account default. */
+      config_id?: string
     }
     if (name === undefined && status === undefined) {
       return NextResponse.json({ error: 'Provide name and/or status' }, { status: 400 })
     }
 
-    const instanceName = await getDefaultInstanceName(supabase, accountId)
+    const instanceName = await instanceForConversation(supabase, accountId, config_id ?? null)
     if (!instanceName) {
       return NextResponse.json({ error: 'WhatsApp not connected.' }, { status: 400 })
     }

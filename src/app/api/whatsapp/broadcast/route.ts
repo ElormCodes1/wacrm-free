@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getDefaultInstanceName } from '@/lib/whatsapp/resolve-send-target'
+import { instanceForConversation } from '@/lib/whatsapp/resolve-send-target'
 import { sendText, sendMedia } from '@/lib/whatsapp/provider/evolution'
 import { whichAreOnWhatsApp } from '@/lib/whatsapp/provider/number-check'
 import { renderTemplateText, templateMedia } from '@/lib/whatsapp/broadcast-core'
@@ -93,6 +93,7 @@ export async function POST(request: Request) {
       template_name,
       template_language,
       template_params,
+      config_id,
     } = body
 
     // Normalize to a list of {phone, params} regardless of shape.
@@ -124,7 +125,12 @@ export async function POST(request: Request) {
       )
     }
 
-    const instanceName = await getDefaultInstanceName(supabase, accountId)
+    // Send from the header-selected number when given, else the default.
+    const instanceName = await instanceForConversation(
+      supabase,
+      accountId,
+      typeof config_id === 'string' ? config_id : null,
+    )
 
     if (!instanceName) {
       return NextResponse.json(

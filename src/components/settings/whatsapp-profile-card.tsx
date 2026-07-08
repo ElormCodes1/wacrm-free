@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { useNumberScope } from '@/hooks/use-number-scope';
 import { Loader2, Save } from 'lucide-react';
 import {
   Card,
@@ -21,6 +22,7 @@ export function WhatsAppProfileCard({ initialName }: { initialName?: string }) {
   const [name, setName] = useState(initialName ?? '');
   const [status, setStatus] = useState('');
   const [saving, setSaving] = useState(false);
+  const { configId, scope, numbers } = useNumberScope();
 
   async function save() {
     setSaving(true);
@@ -31,6 +33,8 @@ export function WhatsAppProfileCard({ initialName }: { initialName?: string }) {
         body: JSON.stringify({
           name: name.trim() || undefined,
           status: status.trim() ? status.trim() : undefined,
+          // Edit the header-selected number's profile (else the default).
+          config_id: configId ?? undefined,
         }),
       });
       const data = await res.json();
@@ -53,6 +57,17 @@ export function WhatsAppProfileCard({ initialName }: { initialName?: string }) {
         <CardTitle>WhatsApp profile</CardTitle>
         <CardDescription>
           Your public display name and “about” text on WhatsApp.
+          {numbers.length >= 2 && (
+            <span className="mt-1 block text-xs">
+              Editing:{' '}
+              <span className="font-medium text-foreground">
+                {scope === 'all'
+                  ? 'your default number'
+                  : numbers.find((n) => n.id === scope)?.label || 'selected number'}
+              </span>{' '}
+              — switch numbers from the header.
+            </span>
+          )}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
