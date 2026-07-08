@@ -767,6 +767,95 @@ export async function starMessage(args: {
 }
 
 // ============================================================
+// Newsletters / Channels
+// ============================================================
+
+export interface NewsletterInfo {
+  id: string
+  name?: string
+  description?: string
+  invite?: string
+  subscribers?: number
+  verification?: string
+  mute_state?: string
+  // fields from metadata reads (thread_metadata shape)
+  thread_metadata?: {
+    name?: { text?: string }
+    description?: { text?: string }
+    invite?: string
+    subscribers_count?: string
+  }
+}
+
+export async function createNewsletter(args: {
+  instanceName: string
+  name: string
+  description?: string
+}): Promise<NewsletterInfo> {
+  return await evolutionFetch<NewsletterInfo>(
+    `/newsletter/create/${encodeURIComponent(args.instanceName)}`,
+    { method: 'POST', body: { name: args.name, description: args.description } },
+  )
+}
+
+export async function newsletterMetadata(args: {
+  instanceName: string
+  type: 'jid' | 'invite'
+  key: string
+}): Promise<NewsletterInfo | null> {
+  try {
+    return await evolutionFetch<NewsletterInfo>(
+      `/newsletter/metadata/${encodeURIComponent(args.instanceName)}`,
+      { method: 'POST', body: { type: args.type, key: args.key } },
+    )
+  } catch {
+    return null
+  }
+}
+
+export async function followNewsletter(args: {
+  instanceName: string
+  jid: string
+}): Promise<void> {
+  await evolutionFetch(`/newsletter/follow/${encodeURIComponent(args.instanceName)}`, {
+    method: 'POST',
+    body: { jid: args.jid },
+  })
+}
+
+export async function unfollowNewsletter(args: {
+  instanceName: string
+  jid: string
+}): Promise<void> {
+  await evolutionFetch(`/newsletter/unfollow/${encodeURIComponent(args.instanceName)}`, {
+    method: 'POST',
+    body: { jid: args.jid },
+  })
+}
+
+export async function updateNewsletter(args: {
+  instanceName: string
+  jid: string
+  name?: string
+  description?: string
+}): Promise<void> {
+  await evolutionFetch(`/newsletter/update/${encodeURIComponent(args.instanceName)}`, {
+    method: 'POST',
+    body: { jid: args.jid, name: args.name, description: args.description },
+  })
+}
+
+export async function deleteNewsletter(args: {
+  instanceName: string
+  jid: string
+}): Promise<void> {
+  await evolutionFetch(`/newsletter/delete/${encodeURIComponent(args.instanceName)}`, {
+    method: 'DELETE',
+    body: { jid: args.jid },
+  })
+}
+
+// ============================================================
 // Profile: own + contact enrichment
 // ============================================================
 
