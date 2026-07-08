@@ -211,7 +211,7 @@ export function TagManager() {
                 }}
                 disabled={saving}
                 maxLength={40}
-                className="min-w-[180px] flex-1"
+                className="min-w-0 flex-1 sm:min-w-[180px]"
               />
               <div className="flex gap-1.5">
                 {PRESET_COLORS.map((color) => (

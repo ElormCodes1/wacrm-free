@@ -30,7 +30,7 @@ export function NumberScopeSelector() {
         title="Filter by WhatsApp number"
       >
         <Phone className="h-3.5 w-3.5 text-muted-foreground" />
-        <span className="max-w-[120px] truncate">{label}</span>
+        <span className="hidden max-w-[120px] truncate sm:inline">{label}</span>
         <ChevronsUpDown className="h-3.5 w-3.5 text-muted-foreground" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56 border-border bg-popover">
