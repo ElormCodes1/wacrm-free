@@ -695,8 +695,12 @@ const BarChart = React.forwardRef<HTMLDivElement, BarChartProps>(
               tick={{
                 transform:
                   layout !== "vertical" ? "translate(0, 6)" : undefined,
+                // Explicit fill — Recharts' tick <text> doesn't inherit the
+                // axis-level `fill-muted-foreground` class, so without this
+                // the labels render in a default dark colour (invisible in
+                // dark mode).
+                fill: "var(--muted-foreground)",
               }}
-              fill=""
               stroke=""
               className={cx(
                 "text-xs",
@@ -752,6 +756,7 @@ const BarChart = React.forwardRef<HTMLDivElement, BarChartProps>(
                   layout !== "vertical"
                     ? "translate(-3, 0)"
                     : "translate(0, 0)",
+                fill: "var(--muted-foreground)",
               }}
               {...(layout !== "vertical"
                 ? {
