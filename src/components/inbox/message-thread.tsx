@@ -34,6 +34,10 @@ import {
   EyeOff,
   Eye,
   ListTodo,
+  Pin,
+  PinOff,
+  Bell,
+  BellOff,
   Users,
 } from "lucide-react";
 import { format, isToday, isYesterday } from "date-fns";
@@ -756,7 +760,11 @@ export function MessageThread({
         | "unarchive"
         | "mark_unread"
         | "hide"
-        | "unhide",
+        | "unhide"
+        | "pin"
+        | "unpin"
+        | "mute"
+        | "unmute",
     ) => {
       if (!conversation) return;
       const res = await fetch("/api/whatsapp/conversation-action", {
@@ -774,6 +782,10 @@ export function MessageThread({
         mark_unread: "Marked unread",
         hide: "Chat hidden",
         unhide: "Chat unhidden",
+        pin: "Chat pinned",
+        unpin: "Chat unpinned",
+        mute: "Chat muted",
+        unmute: "Chat unmuted",
       };
       toast.success(messages[action] ?? "Done");
       onRefresh?.();
@@ -1121,6 +1133,29 @@ export function MessageThread({
                 <ListTodo className="mr-2 h-4 w-4" />
                 Create task
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {conversation?.pinned_at ? (
+                <DropdownMenuItem onClick={() => conversationAction("unpin")} className="text-sm">
+                  <PinOff className="mr-2 h-4 w-4" />
+                  Unpin chat
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem onClick={() => conversationAction("pin")} className="text-sm">
+                  <Pin className="mr-2 h-4 w-4" />
+                  Pin chat
+                </DropdownMenuItem>
+              )}
+              {conversation?.muted_until ? (
+                <DropdownMenuItem onClick={() => conversationAction("unmute")} className="text-sm">
+                  <Bell className="mr-2 h-4 w-4" />
+                  Unmute chat
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem onClick={() => conversationAction("mute")} className="text-sm">
+                  <BellOff className="mr-2 h-4 w-4" />
+                  Mute chat
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               {conversation?.archived_at ? (
                 <DropdownMenuItem onClick={() => conversationAction("unarchive")} className="text-sm">

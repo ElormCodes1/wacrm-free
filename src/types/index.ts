@@ -178,6 +178,10 @@ export interface Conversation {
   /** Set when the conversation is hidden — excluded from all inbox views,
    *  handled inside WhatsApp only. Surfaced via the "Hidden" filter. */
   hidden_at?: string | null;
+  /** Set when pinned to the top of the inbox (NULL = not pinned). */
+  pinned_at?: string | null;
+  /** Muted through this time (NULL/past = not muted; far future = always). */
+  muted_until?: string | null;
   /** Which WhatsApp number this conversation is on (multi-number). */
   whatsapp_config_id?: string | null;
   /** Embedded number label, when fetched with CONVERSATION_SELECT. */

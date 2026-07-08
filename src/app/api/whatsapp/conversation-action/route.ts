@@ -30,9 +30,11 @@ export async function POST(request: Request) {
     const accountId = profile?.account_id as string | undefined
     if (!accountId) return NextResponse.json({ error: 'No account' }, { status: 403 })
 
-    const { conversation_id, action } = (await request.json().catch(() => ({}))) as {
+    const { conversation_id, action, hours } = (await request.json().catch(() => ({}))) as {
       conversation_id?: string
       action?: string
+      /** For 'mute' — how long to mute; omitted/0 = indefinitely. */
+      hours?: number
     }
     if (!conversation_id || !action) {
       return NextResponse.json({ error: 'conversation_id and action required' }, { status: 400 })
@@ -92,6 +94,32 @@ export async function POST(request: Request) {
       await supabase
         .from('conversations')
         .update({ hidden_at: action === 'hide' ? now : null, updated_at: now })
+        .eq('id', conversation_id)
+      return NextResponse.json({ success: true })
+    }
+
+    if (action === 'pin' || action === 'unpin') {
+      // CRM-local — orders your inbox work queue, independent of the phone.
+      await supabase
+        .from('conversations')
+        .update({ pinned_at: action === 'pin' ? now : null, updated_at: now })
+        .eq('id', conversation_id)
+      return NextResponse.json({ success: true })
+    }
+
+    if (action === 'mute' || action === 'unmute') {
+      // CRM-local — mutes unread emphasis. `hours` limits the duration;
+      // omitted = indefinite (a far-future sentinel).
+      let muted_until: string | null = null
+      if (action === 'mute') {
+        muted_until =
+          hours && hours > 0
+            ? new Date(Date.now() + hours * 3_600_000).toISOString()
+            : '2999-12-31T00:00:00.000Z'
+      }
+      await supabase
+        .from('conversations')
+        .update({ muted_until, updated_at: now })
         .eq('id', conversation_id)
       return NextResponse.json({ success: true })
     }

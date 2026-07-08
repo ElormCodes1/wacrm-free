@@ -9,7 +9,7 @@ import {
 } from "@/lib/inbox/conversations";
 import { cn } from "@/lib/utils";
 import type { Conversation, ConversationStatus, Tag } from "@/types";
-import { Search, ChevronDown, X, Users } from "lucide-react";
+import { Search, ChevronDown, X, Users, Pin, BellOff } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Input } from "@/components/ui/input";
 import {
@@ -183,7 +183,11 @@ export function ConversationList({
       } else {
         q = q.is("archived_at", null).is("hidden_at", null);
       }
-      const { data, error } = await q.order("last_message_at", { ascending: false });
+      // Pinned chats float to the top (most-recently-pinned first), then
+      // everything else by recency.
+      const { data, error } = await q
+        .order("pinned_at", { ascending: false, nullsFirst: false })
+        .order("last_message_at", { ascending: false });
 
       if (cancelled) return;
 
@@ -578,6 +582,10 @@ function ConversationItem({
     : "";
 
   const unread = conversation.unread_count > 0;
+  const pinned = !!conversation.pinned_at;
+  // The menu only sets indefinite mutes, so any value means muted. (Avoids a
+  // Date.now() call in render, which the react-compiler purity rule forbids.)
+  const muted = !!conversation.muted_until;
 
   return (
     <button
@@ -607,13 +615,18 @@ function ConversationItem({
       {/* Content */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-sm font-medium text-foreground">
-            {displayName}
-          </span>
+          <div className="flex min-w-0 items-center gap-1">
+            {muted && (
+              <BellOff className="h-3 w-3 shrink-0 text-muted-foreground" />
+            )}
+            <span className="truncate text-sm font-medium text-foreground">
+              {displayName}
+            </span>
+          </div>
           <span
             className={cn(
               "shrink-0 text-[10px]",
-              unread ? "font-medium text-primary" : "text-muted-foreground"
+              unread && !muted ? "font-medium text-primary" : "text-muted-foreground"
             )}
           >
             {timeAgo}
@@ -629,8 +642,18 @@ function ConversationItem({
             {conversation.last_message_text || "No messages yet"}
           </p>
           <div className="flex shrink-0 items-center gap-1.5">
+            {pinned && (
+              <Pin className="h-3 w-3 rotate-45 text-muted-foreground" />
+            )}
             {unread && (
-              <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-positive px-1 text-[10px] font-bold text-positive-foreground">
+              <span
+                className={cn(
+                  "flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-bold",
+                  muted
+                    ? "bg-muted-foreground/40 text-foreground"
+                    : "bg-positive text-positive-foreground"
+                )}
+              >
                 {conversation.unread_count}
               </span>
             )}
