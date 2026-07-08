@@ -1170,33 +1170,6 @@ export function MessageThread({
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Contact-panel toggle — desktop only. The contact sidebar
-              eats a chunk of horizontal width that crowds the thread on
-              smaller laptops; this lets agents reclaim it when they just
-              want to read and reply. Hidden on mobile, where the sidebar
-              never renders as a permanent panel anyway. Issue #258. */}
-          {onToggleContactPanel && (
-            <button
-              type="button"
-              onClick={onToggleContactPanel}
-              aria-label={
-                contactPanelOpen ? "Hide contact panel" : "Show contact panel"
-              }
-              aria-pressed={contactPanelOpen}
-              title={contactPanelOpen ? "Hide contact" : "Show contact"}
-              className={cn(
-                "hidden h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-muted hover:text-foreground lg:inline-flex",
-                contactPanelOpen ? "text-primary" : "text-muted-foreground",
-              )}
-            >
-              {contactPanelOpen ? (
-                <PanelRightClose className="h-4 w-4" />
-              ) : (
-                <PanelRightOpen className="h-4 w-4" />
-              )}
-            </button>
-          )}
-
           {/* Manual refresh — forces a refetch of the messages + the
               conversation list (the parent bumps its resyncToken). Useful
               when realtime missed an event or the agent just wants to be
@@ -1402,6 +1375,34 @@ export function MessageThread({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {/* Contact-panel toggle — placed last in the row (after the ⋮
+              menu). Desktop only; the contact sidebar eats a chunk of
+              horizontal width that crowds the thread on smaller laptops, so
+              this lets agents reclaim it when they just want to read and
+              reply. Hidden on mobile, where the sidebar never renders as a
+              permanent panel anyway. Issue #258. */}
+          {onToggleContactPanel && (
+            <button
+              type="button"
+              onClick={onToggleContactPanel}
+              aria-label={
+                contactPanelOpen ? "Hide contact panel" : "Show contact panel"
+              }
+              aria-pressed={contactPanelOpen}
+              title={contactPanelOpen ? "Hide contact" : "Show contact"}
+              className={cn(
+                "hidden h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-muted hover:text-foreground lg:inline-flex",
+                contactPanelOpen ? "text-primary" : "text-muted-foreground",
+              )}
+            >
+              {contactPanelOpen ? (
+                <PanelRightClose className="h-4 w-4" />
+              ) : (
+                <PanelRightOpen className="h-4 w-4" />
+              )}
+            </button>
+          )}
         </div>
       </div>
 
