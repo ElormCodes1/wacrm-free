@@ -27,16 +27,19 @@ writes (privacy, and likely profile-photo/settings) are NOT.** So:
 - [ ] ~~Privacy settings (change)~~ — ❌ CONFIRMED non-viable (write drops the socket). Read-only display possible but low value.
 - [ ] niche: emit call (`/call/offer`), per-number proxy (`/proxy/*`), WAVOIP token setting. [WIRE, low priority]
 
-### ⚠️ Finding: adding new Evolution REST routes = compiled-bundle surgery
-The patched image (`wacrm-free/evolution-patch/`) is built `FROM
-evoapicloud/evolution-api:latest` and string-patches the **minified**
-`/evolution/dist/main.js` (not TS source). The receipt patch was a 2-line
-anchor swap; adding a whole endpoint (route + controller method + service
-method + validation schema) means 3–4 fragile injections into minified code
-that break on every base-image bump. So "patch Evolution" is real work with
-real fragility — prefer CRM-local when the value is inbox-organization.
+### ✅ RESOLVED: Evolution now builds from source (code-level patching)
+Superseded the minified-bundle string-patch. The compose `evolution-api`
+service now builds `FROM ../evolution-api` (our fork ElormCodes1/evolution-api,
+pinned 2.3.7 — the exact running version). Every patch is a normal TS edit in
+that repo's `src/`, `tsc + tsup` validates on build, and a failed build never
+touches the running container. The old receipt/seen-by string-hack is ported
+to source. Rebuild: `docker compose up -d --build evolution-api`.
+Confirmed safe: pin/mute/star endpoints all use Baileys `chatModify` (same
+class as archive) — tested live, socket stays `open` (unlike privacy/buttons).
 
-## Tier 2 — patch Evolution (Baileys has it, Evolution REST doesn't)
+## Tier 2 — patch Evolution (now via source build — see RESOLVED above)
+- [x] **WhatsApp-synced pin / mute / star** — ✅ DONE. New Evolution endpoints `/chat/pinChat|muteChat|starMessage` (source, chatModify) + provider wrappers; pin/mute mirror in conversation-action route, star mirror via `/api/whatsapp/message/star`. On top of the existing CRM-local behavior.
+
 - [x] **Chat actions: pin + mute** — ✅ DONE **CRM-local** (migration 042: pinned_at/muted_until; thread menu; pinned-first sort; greyed unread + mute icon). WhatsApp-phone mirror (chatModify pin/mute via a bundle patch) deferred — brittle, and CRM-queue organization is arguably better done CRM-side anyway.
 - [x] **Star messages** — ✅ DONE **CRM-local** (migration 043: messages.starred_at; star in the message hover toolbar; ⭐ indicator on the bubble; findable "Starred" section in the contact sidebar).
 - [x] **Delete chat** — ✅ DONE **CRM-local** (thread ⋮ "Delete chat" → conversation-action 'delete' → hard delete; messages+reactions cascade off the FK; deselects via onBack). Chat stays on the phone's WhatsApp.
