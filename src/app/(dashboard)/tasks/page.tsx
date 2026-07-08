@@ -402,7 +402,7 @@ function TaskRow({ task, onToggle, onEdit, onOpenContact }: TaskRowProps) {
             "flex shrink-0 items-center gap-1 self-center rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors",
             done
               ? "border border-border text-muted-foreground hover:bg-muted"
-              : "bg-positive/10 text-positive hover:bg-positive/20",
+              : "bg-primary/10 text-primary hover:bg-primary/20",
           )}
         >
           {done ? (

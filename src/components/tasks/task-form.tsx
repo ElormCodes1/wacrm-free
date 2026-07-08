@@ -357,7 +357,7 @@ export function TaskForm({
                 className={
                   task.status === "done"
                     ? "mb-2 w-full border border-border bg-transparent text-muted-foreground hover:bg-muted"
-                    : "mb-2 w-full bg-positive text-white hover:bg-positive/90"
+                    : "mb-2 w-full bg-primary text-primary-foreground hover:bg-primary/90"
                 }
               >
                 {task.status === "done" ? (
