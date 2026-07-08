@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { StatusComposer } from "./status-composer";
 import { StoryViewer, type ViewerGroup } from "./story-viewer";
 import type { StatusFeed, StatusGroup } from "./types";
+import { useNumberScope } from "@/hooks/use-number-scope";
 import { toast } from "sonner";
 
 function initials(name: string): string {
@@ -54,15 +55,20 @@ export function StatusView() {
   const [viewer, setViewer] = useState<{ groups: ViewerGroup[]; index: number } | null>(null);
   const postedIds = useRef<Set<string>>(new Set());
 
+  const { configId } = useNumberScope();
+
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/whatsapp/status/feed");
+      const url = configId
+        ? `/api/whatsapp/status/feed?configId=${encodeURIComponent(configId)}`
+        : "/api/whatsapp/status/feed";
+      const res = await fetch(url);
       const data = await res.json();
       if (res.ok) setFeed(data as StatusFeed);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [configId]);
 
   useEffect(() => {
     load();

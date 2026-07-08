@@ -44,7 +44,7 @@ function pickContact(row: any): { id: string; name: string | null; avatar_url: s
   return Array.isArray(c) ? (c[0] ?? null) : c
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const supabase = await createClient()
   const {
     data: { user },
@@ -53,6 +53,8 @@ export async function GET() {
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  // Optional: scope to one connected number (the header selector).
+  const configId = new URL(request.url).searchParams.get('configId')
 
   const { data: profile } = await supabase
     .from('profiles')
@@ -62,14 +64,15 @@ export async function GET() {
   const accountId = profile?.account_id as string | undefined
   if (!accountId) return NextResponse.json({ error: 'No account' }, { status: 403 })
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('status_updates')
     .select(
       'id, contact_id, is_mine, poster_phone, poster_name, content_type, content_text, media_url, background_color, posted_at, viewed_at, contact:contacts(id, name, avatar_url, phone)',
     )
     .eq('account_id', accountId)
     .gt('expires_at', new Date().toISOString())
-    .order('posted_at', { ascending: true })
+  if (configId) query = query.eq('whatsapp_config_id', configId)
+  const { data, error } = await query.order('posted_at', { ascending: true })
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })

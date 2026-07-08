@@ -8,6 +8,7 @@ import {
   normalizeConversations,
 } from "@/lib/inbox/conversations";
 import { cn } from "@/lib/utils";
+import { useNumberScope } from "@/hooks/use-number-scope";
 import type { Conversation, ConversationStatus, Tag } from "@/types";
 import { Search, ChevronDown, X, Users, Pin, BellOff } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
@@ -80,6 +81,8 @@ export function ConversationList({
   const [filter, setFilter] = useState<InboxFilter>("all");
   const [contactType, setContactType] = useState<ContactType>("all");
   const [loading, setLoading] = useState(true);
+  // Scope the inbox to the header-selected WhatsApp number (null = all).
+  const { configId } = useNumberScope();
   // Contact-based filters (issue #272). Tags use OR logic (a conversation
   // matches if its contact carries any selected tag), consistent with
   // Broadcast audience filtering. Company is an exact match on the field.
@@ -183,6 +186,10 @@ export function ConversationList({
       } else {
         q = q.is("archived_at", null).is("hidden_at", null);
       }
+      // Scope to the selected WhatsApp number when one is chosen.
+      if (configId) {
+        q = q.eq("whatsapp_config_id", configId);
+      }
       // Pinned chats float to the top (most-recently-pinned first), then
       // everything else by recency.
       const { data, error } = await q
@@ -214,7 +221,8 @@ export function ConversationList({
     // the realtime channel reconnects or the tab regains focus — catches
     // up on any events sent while the WS was disconnected or throttled.
     // `showArchived` refetches when toggling the Archived view.
-  }, [resyncToken, showArchived, showHidden]);
+    // `configId` refetches when the header number scope changes.
+  }, [resyncToken, showArchived, showHidden, configId]);
 
   // Tag definitions for the filter picker — loaded once so labels/colours
   // stay stable regardless of which conversations happen to be loaded.
