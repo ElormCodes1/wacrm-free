@@ -9,6 +9,8 @@ import {
   Loader2,
   Info,
   EyeOff,
+  Eye,
+  Share2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,7 +54,11 @@ function extractProducts(catalog: unknown): Product[] {
         : typeof o.priceAmount1000 === "number"
           ? (o.priceAmount1000 as number) / 1000
           : undefined;
+    // getCatalog returns images as `imageUrls: { requested, original }`.
+    const imageUrls = o.imageUrls as { requested?: string; original?: string } | undefined;
     const image =
+      imageUrls?.original ??
+      imageUrls?.requested ??
       (o.imageUrl as string) ??
       (o.image as string) ??
       ((o.productImageCollection as Record<string, unknown>[])?.[0]?.url as string) ??
@@ -74,6 +80,7 @@ export default function StorePage() {
   const [products, setProducts] = useState<Product[] | null>(null);
   const [isBusiness, setIsBusiness] = useState<boolean | null>(null);
   const [formFor, setFormFor] = useState<Product | "new" | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -93,7 +100,6 @@ export default function StorePage() {
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
 
@@ -114,6 +120,47 @@ export default function StorePage() {
     },
     [load],
   );
+
+  // Hide / show a product on WhatsApp (isHidden). The server re-sends the
+  // product with its current image, so no re-upload here.
+  const toggleHidden = useCallback(async (p: Product) => {
+    const next = !p.isHidden;
+    setBusyId(p.id);
+    try {
+      const res = await fetch(`/api/whatsapp/store/${encodeURIComponent(p.id)}/hidden`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hidden: next }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(d.error ?? "Update failed");
+        return;
+      }
+      setProducts((prev) => prev?.map((x) => (x.id === p.id ? { ...x, isHidden: next } : x)) ?? prev);
+      toast.success(next ? "Product hidden from your catalog" : "Product is visible again");
+    } finally {
+      setBusyId(null);
+    }
+  }, []);
+
+  // Post the product to the Business number's WhatsApp Status (Stories).
+  const shareToStatus = useCallback(async (p: Product) => {
+    setBusyId(p.id);
+    try {
+      const res = await fetch(`/api/whatsapp/store/${encodeURIComponent(p.id)}/share-status`, {
+        method: "POST",
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(d.error ?? "Couldn't share to status");
+        return;
+      }
+      toast.success("Shared to your WhatsApp status");
+    } finally {
+      setBusyId(null);
+    }
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -197,12 +244,34 @@ export default function StorePage() {
                     {p.description}
                   </p>
                 )}
-                <div className="mt-3 flex gap-2">
+                <div className="mt-3 flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" onClick={() => setFormFor(p)} className="flex-1">
                     <Pencil className="h-3.5 w-3.5" />
                     Edit
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => remove(p)}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busyId === p.id}
+                    title="Share to WhatsApp status"
+                    onClick={() => shareToStatus(p)}
+                  >
+                    {busyId === p.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Share2 className="h-3.5 w-3.5" />
+                    )}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busyId === p.id}
+                    title={p.isHidden ? "Show in catalog" : "Hide from catalog"}
+                    onClick={() => toggleHidden(p)}
+                  >
+                    {p.isHidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => remove(p)} title="Delete">
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </div>
