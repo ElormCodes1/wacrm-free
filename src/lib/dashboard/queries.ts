@@ -3,7 +3,6 @@ import {
   daysAgoStart,
   DOW_SHORT_MON_FIRST,
   lastNDayKeys,
-  localDayKey,
   mondayIndex,
   startOfLocalDay,
 } from './date-utils'
@@ -147,26 +146,29 @@ export async function loadConversationsSeries(
   configId: string | null = null,
 ): Promise<ConversationsSeriesPoint[]> {
   const start = daysAgoStart(rangeDays - 1).toISOString()
-  const { data, error } = await scopeMsg(
-    db
-      .from('messages')
-      .select(msgCols('created_at, sender_type', configId))
-      .gte('created_at', start)
-      .order('created_at', { ascending: true }),
-    configId,
-  )
+  // Aggregated in Postgres (one row per day) instead of pulling every
+  // message into the browser. Bucketed in the caller's timezone so day
+  // boundaries match the rest of the dashboard.
+  const { data, error } = await db.rpc('dashboard_conversation_series', {
+    p_start: start,
+    p_tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    p_config: configId,
+  })
   if (error) throw error
 
   const keys = lastNDayKeys(rangeDays)
   const buckets = new Map<string, { incoming: number; outgoing: number }>()
   for (const k of keys) buckets.set(k, { incoming: 0, outgoing: 0 })
 
-  for (const row of (data ?? []) as unknown as { created_at: string; sender_type: string }[]) {
-    const key = localDayKey(row.created_at)
-    const bucket = buckets.get(key)
+  for (const row of (data ?? []) as {
+    day: string
+    incoming: number
+    outgoing: number
+  }[]) {
+    const bucket = buckets.get(row.day)
     if (!bucket) continue
-    if (row.sender_type === 'customer') bucket.incoming += 1
-    else bucket.outgoing += 1 // agent + bot both count as outgoing
+    bucket.incoming = Number(row.incoming)
+    bucket.outgoing = Number(row.outgoing)
   }
 
   return keys.map((day) => ({ day, ...(buckets.get(day) ?? { incoming: 0, outgoing: 0 }) }))
@@ -217,54 +219,26 @@ export async function loadResponseTime(
   db: DB,
   configId: string | null = null,
 ): Promise<ResponseTimeSummary> {
-  // Pull the last 14 days of messages in one shot, then walk per
-  // conversation to find each "first inbound" → "first subsequent
-  // outbound" pair. 14 days gives us both "this week" + "last week"
-  // with enough overlap if the user opens the dashboard late on a
-  // Monday.
+  // The "first inbound → first subsequent outbound" pairing is done in
+  // Postgres (see dashboard_response_samples); the browser receives one
+  // row per replied streak instead of every message. The day-of-week /
+  // this-vs-last-week bucketing stays here because it depends on the
+  // caller's local timezone. 14 days covers both weeks with a Monday
+  // overlap.
   const fourteenDaysAgo = daysAgoStart(13).toISOString()
-  const { data, error } = await scopeMsg(
-    db
-      .from('messages')
-      .select(msgCols('conversation_id, sender_type, created_at', configId))
-      .gte('created_at', fourteenDaysAgo)
-      .order('conversation_id', { ascending: true })
-      .order('created_at', { ascending: true }),
-    configId,
-  )
+  const { data, error } = await db.rpc('dashboard_response_samples', {
+    p_start: fourteenDaysAgo,
+    p_config: configId,
+  })
   if (error) throw error
 
-  const rows = (data ?? []) as unknown as {
-    conversation_id: string
-    sender_type: string
-    created_at: string
-  }[]
-
-  // Group per conversation, pair unreplied customer messages with the
-  // next outbound message from the agent/bot. A single customer message
-  // can only count once (avoids inflating averages if the customer
-  // double-messages while the agent takes time to reply).
-  interface Sample {
-    customerAt: Date
-    responseAt: Date
-  }
-  const samples: Sample[] = []
-
-  let currentConv = ''
-  let pendingCustomer: Date | null = null
-  for (const row of rows) {
-    if (row.conversation_id !== currentConv) {
-      currentConv = row.conversation_id
-      pendingCustomer = null
-    }
-    const ts = new Date(row.created_at)
-    if (row.sender_type === 'customer') {
-      if (!pendingCustomer) pendingCustomer = ts
-    } else if (pendingCustomer) {
-      samples.push({ customerAt: pendingCustomer, responseAt: ts })
-      pendingCustomer = null
-    }
-  }
+  const samples = ((data ?? []) as {
+    customer_at: string
+    response_minutes: number
+  }[]).map((r) => ({
+    customerAt: new Date(r.customer_at),
+    diffMin: Number(r.response_minutes),
+  }))
 
   const now = new Date()
   const thisWeekStart = daysAgoStart(mondayIndex(now))
@@ -279,7 +253,7 @@ export async function loadResponseTime(
   const lastWeekMins: number[] = []
 
   for (const s of samples) {
-    const diffMin = (s.responseAt.getTime() - s.customerAt.getTime()) / 60_000
+    const diffMin = s.diffMin
     if (diffMin < 0) continue
     const dow = mondayIndex(s.customerAt)
     byDow.get(dow)!.push(diffMin)
