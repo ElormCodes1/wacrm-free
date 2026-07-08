@@ -7,10 +7,10 @@ import { DEFAULT_MODE, MODE_STORAGE_KEY, MODES } from "@/lib/themes";
 
 export const metadata: Metadata = {
   title: {
-    default: "wacrm",
-    template: "%s — wacrm",
+    default: "WaCRM",
+    template: "%s — WaCRM",
   },
-  description: "Self-hostable CRM template for WhatsApp.",
+  description: "A self-hosted WhatsApp CRM.",
   robots: {
     index: false,
     follow: false,

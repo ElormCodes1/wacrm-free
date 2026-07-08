@@ -194,7 +194,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
           <Link href="/dashboard" className="flex items-center gap-2">
             <BrandLogo className="h-8 w-8 shrink-0" />
             <span className="text-sm font-semibold text-foreground">
-              CRM Template for WhatsApp
+              WaCRM
             </span>
           </Link>
           <button
