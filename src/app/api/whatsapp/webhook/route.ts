@@ -805,6 +805,15 @@ function adaptMessage(data: any): WhatsAppMessage {
       video: { mime_type: m.videoMessage.mimetype, caption: m.videoMessage.caption },
     }
   }
+  // A PTV (round "video note") arrives as its own field. Treat it as a
+  // video — same download + render path; the sender's client drew it round.
+  if (m.ptvMessage) {
+    return {
+      ...base,
+      type: 'video',
+      video: { mime_type: m.ptvMessage.mimetype, caption: m.ptvMessage.caption },
+    }
+  }
   if (m.audioMessage) {
     return { ...base, type: 'audio', audio: { mime_type: m.audioMessage.mimetype } }
   }

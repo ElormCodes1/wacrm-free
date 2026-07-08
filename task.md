@@ -21,7 +21,7 @@ writes (privacy, and likely profile-photo/settings) are NOT.** So:
 `fetchPrivacySettings` (read) is fine; the WRITE is a dead end on this stack.
 
 ## Tier 1 — Evolution-native (no patching)
-- [ ] **Video notes (PTV)** — round video messages. `/message/sendPtv`. Composer option. SAFE (message send). [WIRE] ← NEXT
+- [x] **Video notes (PTV)** — ✅ DONE. Round "video note" (self-playing, no scrubber on the recipient's phone). Evolution `/message/sendPtv` (verified live — real ptvMessage sent, socket stayed `open` → SAFE). provider `sendPtv()` + `/api/whatsapp/send-ptv` route (persists content_type='video'; the recipient's client draws it round) + composer **Video note** attach-menu item (uploads a video to chat-media, staged round with no caption, routed to the PTV endpoint) + inbound `ptvMessage`→video in the webhook adapter (was dropped). content_type stays 'video' — no migration. [WIRE]
 - [ ] **Business catalog (read)** — view a contact's / own products + collections. `/business/getCatalog`, `/business/getCollections`. READ-only = safe, but our test numbers aren't Business accounts (getCatalog → isBusiness:false, no products) so nothing to show yet. Build when there's a Business number. [WIRE]
 - [ ] **Own profile picture** — set + remove. `updateProfilePicture` unwired. ⚠️ account-level op — must be live-tested for the same socket-drop before shipping; hold until verified safe. [WIRE, risky]
 - [ ] ~~Privacy settings (change)~~ — ❌ CONFIRMED non-viable (write drops the socket). Read-only display possible but low value.

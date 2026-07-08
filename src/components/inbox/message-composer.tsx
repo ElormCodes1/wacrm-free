@@ -13,6 +13,7 @@ import {
   Paperclip,
   Image as ImageIcon,
   Video,
+  CircleDot,
   FileText,
   Mic,
   Square,
@@ -68,6 +69,9 @@ export interface SendMediaPayload {
   caption?: string;
   /** Original file name — surfaced to the recipient for documents. */
   filename?: string;
+  /** True when this video should be sent as a round PTV "video note"
+   *  (Evolution /message/sendPtv) rather than a normal video attachment. */
+  isPtv?: boolean;
   replyToId?: string;
 }
 
@@ -96,6 +100,9 @@ interface MediaDraft {
   path: string;
   filename: string;
   caption: string;
+  /** A `video` draft staged as a round PTV note (no caption, sent via
+   *  the sendPtv endpoint). */
+  isPtv?: boolean;
 }
 
 interface MessageComposerProps {
@@ -138,6 +145,7 @@ export function MessageComposer({
   const [busy, setBusy] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
+  const videoNoteInputRef = useRef<HTMLInputElement>(null);
   const documentInputRef = useRef<HTMLInputElement>(null);
   // Mirror of `draft` for the unmount cleanup, which can't read render
   // state. Kept in sync below so navigating away with a staged-but-unsent
@@ -292,8 +300,10 @@ export function MessageComposer({
   }, [drafting, conversationId, adjustHeight]);
 
   // Upload a captured file to chat-media and stage it as a draft.
+  // `isPtv` marks a video staged as a round "video note" (sent via
+  // /message/sendPtv) — same upload path, different send endpoint.
   const stageUpload = useCallback(
-    async (kind: ComposerMediaKind, file: File) => {
+    async (kind: ComposerMediaKind, file: File, isPtv = false) => {
       // Per-kind ceiling mirrors Meta's caps (image 5 MB, etc.) so we
       // reject before upload rather than orphaning an object that Meta
       // would then refuse at send.
@@ -311,7 +321,7 @@ export function MessageComposer({
         const { publicUrl, path } = await uploadAccountMedia(CHAT_MEDIA_BUCKET, file);
         // Replacing an existing draft? GC the previous object first.
         removeStaged(draftRef.current?.path);
-        setDraft({ kind, mediaUrl: publicUrl, path, filename: file.name, caption: "" });
+        setDraft({ kind, mediaUrl: publicUrl, path, filename: file.name, caption: "", isPtv });
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Upload failed.");
       } finally {
@@ -324,6 +334,14 @@ export function MessageComposer({
   const handlePicked = useCallback(
     (kind: "image" | "video" | "document", file: File | undefined) => {
       if (file) void stageUpload(kind, file);
+    },
+    [stageUpload],
+  );
+
+  // A video note is a video upload flagged as PTV.
+  const handlePickedPtv = useCallback(
+    (file: File | undefined) => {
+      if (file) void stageUpload("video", file, true);
     },
     [stageUpload],
   );
@@ -424,8 +442,11 @@ export function MessageComposer({
       // Audio takes no caption (Meta rejects it). Everything else: the
       // trimmed caption, or undefined when blank.
       caption:
-        draft.kind === "audio" ? undefined : draft.caption.trim() || undefined,
+        draft.kind === "audio" || draft.isPtv
+          ? undefined
+          : draft.caption.trim() || undefined,
       filename: draft.kind === "document" ? draft.filename : undefined,
+      isPtv: draft.isPtv,
       replyToId: replyTo?.id,
     });
     // The object is now owned by the sent message — clear without GC.
@@ -474,6 +495,16 @@ export function MessageComposer({
         className="hidden"
         onChange={(e) => {
           handlePicked("video", e.target.files?.[0]);
+          e.target.value = "";
+        }}
+      />
+      <input
+        ref={videoNoteInputRef}
+        type="file"
+        accept={PICKER_ACCEPT.video}
+        className="hidden"
+        onChange={(e) => {
+          handlePickedPtv(e.target.files?.[0]);
           e.target.value = "";
         }}
       />
@@ -550,6 +581,10 @@ export function MessageComposer({
               <DropdownMenuItem onClick={() => videoInputRef.current?.click()}>
                 <Video className="mr-2 h-4 w-4" />
                 Video
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => videoNoteInputRef.current?.click()}>
+                <CircleDot className="mr-2 h-4 w-4" />
+                Video note
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => documentInputRef.current?.click()}>
                 <FileText className="mr-2 h-4 w-4" />
@@ -689,7 +724,20 @@ function MediaDraftPreview({
               className="max-h-40 rounded-lg object-cover"
             />
           )}
-          {draft.kind === "video" && (
+          {draft.kind === "video" && draft.isPtv && (
+            <div className="flex items-center gap-2">
+              <video
+                src={draft.mediaUrl}
+                muted
+                autoPlay
+                loop
+                playsInline
+                className="h-28 w-28 rounded-full object-cover"
+              />
+              <span className="text-xs text-muted-foreground">Video note</span>
+            </div>
+          )}
+          {draft.kind === "video" && !draft.isPtv && (
             <video src={draft.mediaUrl} controls className="max-h-40 rounded-lg" />
           )}
           {draft.kind === "audio" && (
@@ -713,7 +761,7 @@ function MediaDraftPreview({
       </div>
 
       <div className="mt-2 flex items-end gap-2">
-        {draft.kind !== "audio" && (
+        {draft.kind !== "audio" && !draft.isPtv && (
           <input
             value={draft.caption}
             maxLength={MEDIA_CAPTION_MAX}
@@ -736,7 +784,7 @@ function MediaDraftPreview({
           onClick={onSend}
           className={cn(
             "h-9 w-9 shrink-0 bg-primary p-0 hover:bg-primary/90 disabled:opacity-40",
-            draft.kind === "audio" && "ml-auto",
+            (draft.kind === "audio" || draft.isPtv) && "ml-auto",
           )}
         >
           <Send className="h-4 w-4" />

@@ -520,8 +520,9 @@ export function MessageThread({
         id: tempId,
         conversation_id: conversation.id,
         sender_type: "agent",
+        // A PTV is stored as a video (the recipient's client renders it round).
         content_type: payload.kind,
-        content_text: contentText,
+        content_text: payload.isPtv ? undefined : contentText,
         media_url: payload.mediaUrl,
         status: "sending",
         created_at: new Date().toISOString(),
@@ -531,7 +532,19 @@ export function MessageThread({
       setReplyTo(null);
 
       try {
-        const res = await fetch("/api/whatsapp/send", {
+        // Video notes go to the dedicated PTV endpoint; everything else
+        // uses the shared media send.
+        const res = payload.isPtv
+          ? await fetch("/api/whatsapp/send-ptv", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                conversation_id: conversation.id,
+                media_url: payload.mediaUrl,
+                reply_to_message_id: payload.replyToId,
+              }),
+            })
+          : await fetch("/api/whatsapp/send", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

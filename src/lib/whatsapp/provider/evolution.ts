@@ -420,6 +420,32 @@ export async function sendMedia(args: SendMediaArgs): Promise<EvolutionSendResul
   return { messageId: messageIdFrom(res) }
 }
 
+export interface SendPtvArgs {
+  instanceName: string
+  to: string
+  /** A public URL or a base64 string of the (square, short) video. */
+  video: string
+  quotedMessageId?: string
+}
+
+/**
+ * Send a PTV — a "video note", the round self-playing video WhatsApp
+ * renders like a voice note. Evolution's dedicated `/message/sendPtv`
+ * endpoint takes the raw video (no caption/filename); the recipient's
+ * client draws it round. Socket-safe (a plain media send, verified live).
+ */
+export async function sendPtv(args: SendPtvArgs): Promise<EvolutionSendResult> {
+  const { instanceName, to, video, quotedMessageId } = args
+  if (!video) throw new Error('sendPtv requires a video URL or base64 string.')
+  const body: Record<string, unknown> = { number: to, video }
+  if (quotedMessageId) body.quoted = { key: { id: quotedMessageId } }
+  const res = await evolutionFetch<EvolutionSendResponse>(
+    `/message/sendPtv/${encodeURIComponent(instanceName)}`,
+    { method: 'POST', body },
+  )
+  return { messageId: messageIdFrom(res) }
+}
+
 export interface SendReactionArgs {
   instanceName: string
   to: string
