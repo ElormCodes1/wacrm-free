@@ -126,7 +126,7 @@ export async function GET() {
     const { data: views } = await supabase
       .from('status_views')
       .select(
-        'status_update_id, viewer_phone, viewer_name, viewed_at, contact:contacts!viewer_contact_id(name, avatar_url)',
+        'status_update_id, viewer_phone, viewer_name, viewer_avatar_url, viewer_jid, viewed_at, contact:contacts!viewer_contact_id(name, avatar_url)',
       )
       .eq('account_id', accountId)
       .in('status_update_id', mineIds)
@@ -135,10 +135,18 @@ export async function GET() {
     const byStatus = new Map<string, StatusViewer[]>()
     for (const v of views ?? []) {
       const c = pickContact(v)
+      // A viewer identified only by a WhatsApp LID (privacy id, not a real
+      // phone) with no resolvable name — show a friendly label instead of
+      // the raw 15+ digit id.
+      const isLid =
+        (typeof v.viewer_jid === 'string' && v.viewer_jid.endsWith('@lid')) ||
+        (!v.viewer_jid && (v.viewer_phone?.length ?? 0) >= 15)
+      const resolvedName = c?.name || v.viewer_name
       const viewer: StatusViewer = {
-        name: c?.name || v.viewer_name || v.viewer_phone,
+        name: resolvedName || (isLid ? 'WhatsApp user' : v.viewer_phone),
         phone: v.viewer_phone,
-        avatar_url: c?.avatar_url || null,
+        // CRM contact avatar first, else the viewer's WhatsApp profile pic.
+        avatar_url: c?.avatar_url || v.viewer_avatar_url || null,
         viewed_at: v.viewed_at,
       }
       const list = byStatus.get(v.status_update_id)

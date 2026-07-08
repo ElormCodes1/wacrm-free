@@ -1820,6 +1820,32 @@ const lidCache = new Map<string, { map: Map<string, string>; ts: number }>()
 const LID_TTL_MS = 5 * 60 * 1000
 
 /** Resolve a `<lid>@lid` JID to its `<phone>@s.whatsapp.net`, or null. */
+/**
+ * Look up a contact in Evolution's synced contact store by its JID (works
+ * for @lid too). Returns the contact's WhatsApp pushName + profile picture
+ * when present — used to enrich status viewers who aren't CRM contacts.
+ * NOTE: WhatsApp often leaves pushName null for contacts who've never
+ * messaged us; the profilePicUrl is more often available.
+ */
+export async function findContactByJid(
+  instanceName: string,
+  jid: string,
+): Promise<{ pushName: string | null; profilePicUrl: string | null } | null> {
+  try {
+    const data = await evolutionFetch<
+      Array<{ pushName?: string | null; profilePicUrl?: string | null }>
+    >(`/chat/findContacts/${encodeURIComponent(instanceName)}`, {
+      method: 'POST',
+      body: { where: { remoteJid: jid } },
+    })
+    const c = Array.isArray(data) ? data[0] : undefined
+    if (!c) return null
+    return { pushName: c.pushName ?? null, profilePicUrl: c.profilePicUrl ?? null }
+  } catch {
+    return null
+  }
+}
+
 export async function resolveLid(
   instanceName: string,
   lidJid: string,

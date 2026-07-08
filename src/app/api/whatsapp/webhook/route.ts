@@ -4,6 +4,7 @@ import {
   getBase64FromMediaMessage,
   jidToPhone,
   resolveLid,
+  findContactByJid,
   fetchGroupInfo,
   fetchInstance,
 } from '@/lib/whatsapp/provider/evolution'
@@ -793,15 +794,20 @@ async function handleReceiptUpdate(instanceName: string, updates: any[]) {
       .maybeSingle()
     if (!status) continue
 
+    const rawViewerJid: string = u.receipt.userJid
     const viewerJid =
       (await resolveJid(instanceName, {
-        remoteJid: u.receipt.userJid,
+        remoteJid: rawViewerJid,
         remoteJidAlt: u.receipt.userJidAlt,
-      })) || u.receipt.userJid
+      })) || rawViewerJid
     const viewerPhone = normalizePhone(jidToPhone(viewerJid))
     if (!viewerPhone) continue
 
     const existing = await findExistingContact(supabaseAdmin(), config.account_id, viewerPhone)
+    // Enrich unresolved (LID) viewers from Evolution's contact store — the
+    // WhatsApp profile pic (usually present) + pushName (often null) make the
+    // "seen by" list recognizable even when they aren't a CRM contact.
+    const evo = existing ? null : await findContactByJid(instanceName, rawViewerJid)
     const viewedTs =
       u.receipt.readTimestamp || u.receipt.playedTimestamp || u.receipt.receiptTimestamp
     const viewedAt =
@@ -818,7 +824,9 @@ async function handleReceiptUpdate(instanceName: string, updates: any[]) {
           message_id: messageId,
           viewer_contact_id: existing?.id ?? null,
           viewer_phone: viewerPhone,
-          viewer_name: existing?.name ?? null,
+          viewer_name: existing?.name ?? evo?.pushName ?? null,
+          viewer_avatar_url: evo?.profilePicUrl ?? null,
+          viewer_jid: rawViewerJid,
           viewed_at: viewedAt,
         },
         { onConflict: 'account_id,message_id,viewer_phone', ignoreDuplicates: true },
