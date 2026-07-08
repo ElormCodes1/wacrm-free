@@ -27,9 +27,34 @@ import type {
 
 type DB = SupabaseClient
 
+// --- Number-scope helpers ---------------------------------------------
+// An account can link several WhatsApp numbers. When a specific number is
+// selected in the header, scope the conversation/message-based stats to it
+// (conversations carry `whatsapp_config_id`; messages via their conversation).
+// Contacts / deals / pipeline are account-level and stay unscoped.
+
+/** Messages don't carry the number directly, so scope via their conversation. */
+const MSG_SCOPE_EMBED = 'conversations!inner(whatsapp_config_id)'
+function msgCols(cols: string, configId: string | null): string {
+  return configId ? `${cols}, ${MSG_SCOPE_EMBED}` : cols
+}
+function scopeMsg<T>(q: T, configId: string | null): T {
+  if (!configId) return q
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (q as any).eq('conversations.whatsapp_config_id', configId) as T
+}
+function scopeConv<T>(q: T, configId: string | null): T {
+  if (!configId) return q
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (q as any).eq('whatsapp_config_id', configId) as T
+}
+
 // --- 1. Metric cards ---------------------------------------------------
 
-export async function loadMetrics(db: DB): Promise<MetricsBundle> {
+export async function loadMetrics(
+  db: DB,
+  configId: string | null = null,
+): Promise<MetricsBundle> {
   const todayStart = startOfLocalDay().toISOString()
   const yesterdayStart = daysAgoStart(1).toISOString()
 
@@ -43,18 +68,27 @@ export async function loadMetrics(db: DB): Promise<MetricsBundle> {
     messagesToday,
     messagesYesterday,
   ] = await Promise.all([
-    db.from('conversations').select('id', { count: 'exact', head: true }).eq('status', 'open'),
-    db
-      .from('conversations')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'open')
-      .gte('created_at', todayStart),
-    db
-      .from('conversations')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'open')
-      .gte('created_at', yesterdayStart)
-      .lt('created_at', todayStart),
+    scopeConv(
+      db.from('conversations').select('id', { count: 'exact', head: true }).eq('status', 'open'),
+      configId,
+    ),
+    scopeConv(
+      db
+        .from('conversations')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'open')
+        .gte('created_at', todayStart),
+      configId,
+    ),
+    scopeConv(
+      db
+        .from('conversations')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'open')
+        .gte('created_at', yesterdayStart)
+        .lt('created_at', todayStart),
+      configId,
+    ),
     db.from('contacts').select('id', { count: 'exact', head: true }).gte('created_at', todayStart),
     db
       .from('contacts')
@@ -62,17 +96,23 @@ export async function loadMetrics(db: DB): Promise<MetricsBundle> {
       .gte('created_at', yesterdayStart)
       .lt('created_at', todayStart),
     db.from('deals').select('value, status').eq('status', 'open'),
-    db
-      .from('messages')
-      .select('id', { count: 'exact', head: true })
-      .eq('sender_type', 'agent')
-      .gte('created_at', todayStart),
-    db
-      .from('messages')
-      .select('id', { count: 'exact', head: true })
-      .eq('sender_type', 'agent')
-      .gte('created_at', yesterdayStart)
-      .lt('created_at', todayStart),
+    scopeMsg(
+      db
+        .from('messages')
+        .select(msgCols('id', configId), { count: 'exact', head: true })
+        .eq('sender_type', 'agent')
+        .gte('created_at', todayStart),
+      configId,
+    ),
+    scopeMsg(
+      db
+        .from('messages')
+        .select(msgCols('id', configId), { count: 'exact', head: true })
+        .eq('sender_type', 'agent')
+        .gte('created_at', yesterdayStart)
+        .lt('created_at', todayStart),
+      configId,
+    ),
   ])
 
   const openDealsRows = (openDeals.data ?? []) as { value: number | null }[]
@@ -104,20 +144,24 @@ export async function loadMetrics(db: DB): Promise<MetricsBundle> {
 export async function loadConversationsSeries(
   db: DB,
   rangeDays: number,
+  configId: string | null = null,
 ): Promise<ConversationsSeriesPoint[]> {
   const start = daysAgoStart(rangeDays - 1).toISOString()
-  const { data, error } = await db
-    .from('messages')
-    .select('created_at, sender_type')
-    .gte('created_at', start)
-    .order('created_at', { ascending: true })
+  const { data, error } = await scopeMsg(
+    db
+      .from('messages')
+      .select(msgCols('created_at, sender_type', configId))
+      .gte('created_at', start)
+      .order('created_at', { ascending: true }),
+    configId,
+  )
   if (error) throw error
 
   const keys = lastNDayKeys(rangeDays)
   const buckets = new Map<string, { incoming: number; outgoing: number }>()
   for (const k of keys) buckets.set(k, { incoming: 0, outgoing: 0 })
 
-  for (const row of (data ?? []) as { created_at: string; sender_type: string }[]) {
+  for (const row of (data ?? []) as unknown as { created_at: string; sender_type: string }[]) {
     const key = localDayKey(row.created_at)
     const bucket = buckets.get(key)
     if (!bucket) continue
@@ -169,22 +213,28 @@ export async function loadPipelineDonut(db: DB): Promise<PipelineDonutData> {
 
 // --- 4. Response time by day of week ----------------------------------
 
-export async function loadResponseTime(db: DB): Promise<ResponseTimeSummary> {
+export async function loadResponseTime(
+  db: DB,
+  configId: string | null = null,
+): Promise<ResponseTimeSummary> {
   // Pull the last 14 days of messages in one shot, then walk per
   // conversation to find each "first inbound" → "first subsequent
   // outbound" pair. 14 days gives us both "this week" + "last week"
   // with enough overlap if the user opens the dashboard late on a
   // Monday.
   const fourteenDaysAgo = daysAgoStart(13).toISOString()
-  const { data, error } = await db
-    .from('messages')
-    .select('conversation_id, sender_type, created_at')
-    .gte('created_at', fourteenDaysAgo)
-    .order('conversation_id', { ascending: true })
-    .order('created_at', { ascending: true })
+  const { data, error } = await scopeMsg(
+    db
+      .from('messages')
+      .select(msgCols('conversation_id, sender_type, created_at', configId))
+      .gte('created_at', fourteenDaysAgo)
+      .order('conversation_id', { ascending: true })
+      .order('created_at', { ascending: true }),
+    configId,
+  )
   if (error) throw error
 
-  const rows = (data ?? []) as {
+  const rows = (data ?? []) as unknown as {
     conversation_id: string
     sender_type: string
     created_at: string
