@@ -450,6 +450,33 @@ export async function sendPtv(args: SendPtvArgs): Promise<EvolutionSendResult> {
   return { messageId: messageIdFrom(res) }
 }
 
+export interface AlbumItem {
+  type: 'image' | 'video'
+  /** A public URL or base64 of the media. */
+  media: string
+  caption?: string
+}
+
+/**
+ * Send 2+ photos/videos as a single grouped album (like WhatsApp's
+ * multi-image share). Backed by our patched Evolution `/message/sendAlbum`,
+ * which posts an album header then each item tagged with `albumParentKey`.
+ * Socket-safe (normal media sends). Returns each item's message id.
+ */
+export async function sendAlbum(args: {
+  instanceName: string
+  to: string
+  media: AlbumItem[]
+}): Promise<{ count: number; messageIds: string[] }> {
+  const { instanceName, to, media } = args
+  const res = await evolutionFetch<{ count?: number; messages?: EvolutionSendResponse[] }>(
+    `/message/sendAlbum/${encodeURIComponent(instanceName)}`,
+    { method: 'POST', body: { number: to, media } },
+  )
+  const messageIds = (res?.messages ?? []).map((m) => messageIdFrom(m)).filter(Boolean)
+  return { count: res?.count ?? messageIds.length, messageIds }
+}
+
 export interface SendReactionArgs {
   instanceName: string
   to: string

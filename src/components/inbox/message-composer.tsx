@@ -14,6 +14,7 @@ import {
   Image as ImageIcon,
   Video,
   CircleDot,
+  Images,
   FileText,
   Mic,
   Square,
@@ -31,6 +32,7 @@ import {
   RichMessageDialog,
   type RichKind,
 } from "@/components/inbox/rich-message-dialog";
+import { AlbumDialog } from "@/components/inbox/album-dialog";
 import { GatedButton } from "@/components/ui/gated-button";
 import {
   DropdownMenu,
@@ -144,6 +146,7 @@ export function MessageComposer({
   const [sending, setSending] = useState(false);
   const [drafting, setDrafting] = useState(false);
   const [richKind, setRichKind] = useState<RichKind | null>(null);
+  const [albumOpen, setAlbumOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Media attachment state. `draft` holds an uploaded-but-not-yet-sent
@@ -599,6 +602,10 @@ export function MessageComposer({
                 <CircleDot className="mr-2 h-4 w-4" />
                 Video note
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setAlbumOpen(true)}>
+                <Images className="mr-2 h-4 w-4" />
+                Album
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => documentInputRef.current?.click()}>
                 <FileText className="mr-2 h-4 w-4" />
                 Document
@@ -630,6 +637,12 @@ export function MessageComposer({
             conversationId={conversationId}
             kind={richKind}
             onClose={() => setRichKind(null)}
+          />
+
+          <AlbumDialog
+            conversationId={conversationId}
+            open={albumOpen}
+            onClose={() => setAlbumOpen(false)}
           />
 
           <GatedButton
