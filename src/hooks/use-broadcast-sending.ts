@@ -55,6 +55,29 @@ interface UseBroadcastSendingReturn {
   progress: number;
 }
 
+/** One recipient's post-send outcome, applied via a bulk RPC. */
+interface RecipientUpdate {
+  id: string;
+  status: 'sent' | 'failed';
+  sent_at?: string | null;
+  whatsapp_message_id?: string | null;
+  error_message: string | null;
+}
+
+/** Persist a batch of recipient outcomes in a single round-trip. */
+async function flushRecipientUpdates(
+  supabase: ReturnType<typeof createClient>,
+  updates: RecipientUpdate[],
+): Promise<void> {
+  if (updates.length === 0) return;
+  const { error } = await supabase.rpc('bulk_update_broadcast_recipients', {
+    p_updates: updates,
+  });
+  if (error) {
+    console.error('[broadcast] recipient status flush failed:', error.message);
+  }
+}
+
 /**
  * Meta rate-limit buffer. 10 per batch + 1 s pause matches the spec
  * and keeps us comfortably under Meta's per-phone-number messaging
@@ -499,54 +522,50 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
             resultsByPhone.set(r.phone, r);
           }
 
+          // Accumulate this batch's per-recipient outcomes and persist them
+          // in a single round-trip (bulk_update_broadcast_recipients),
+          // instead of one UPDATE per recipient.
+          const updates: RecipientUpdate[] = [];
           for (const recipient of batch) {
             const phone = recipient.contact?.phone;
             const result = phone ? resultsByPhone.get(phone) : undefined;
 
             if (!result) {
               failedCount++;
-              await supabase
-                .from('broadcast_recipients')
-                .update({
-                  status: 'failed',
-                  error_message: 'No phone number on contact',
-                })
-                .eq('id', recipient.id);
-              continue;
-            }
-
-            if (result.status === 'sent') {
-              await supabase
-                .from('broadcast_recipients')
-                .update({
-                  status: 'sent',
-                  sent_at: new Date().toISOString(),
-                  whatsapp_message_id: result.whatsapp_message_id ?? null,
-                  error_message: null,
-                })
-                .eq('id', recipient.id);
+              updates.push({
+                id: recipient.id,
+                status: 'failed',
+                error_message: 'No phone number on contact',
+              });
+            } else if (result.status === 'sent') {
+              updates.push({
+                id: recipient.id,
+                status: 'sent',
+                sent_at: new Date().toISOString(),
+                whatsapp_message_id: result.whatsapp_message_id ?? null,
+                error_message: null,
+              });
             } else {
               failedCount++;
-              await supabase
-                .from('broadcast_recipients')
-                .update({
-                  status: 'failed',
-                  error_message: result.error ?? 'Unknown error',
-                })
-                .eq('id', recipient.id);
+              updates.push({
+                id: recipient.id,
+                status: 'failed',
+                error_message: result.error ?? 'Unknown error',
+              });
             }
           }
+          await flushRecipientUpdates(supabase, updates);
         } catch (err) {
-          for (const recipient of batch) {
-            failedCount++;
-            await supabase
-              .from('broadcast_recipients')
-              .update({
-                status: 'failed',
-                error_message: err instanceof Error ? err.message : 'Unknown error',
-              })
-              .eq('id', recipient.id);
-          }
+          const message = err instanceof Error ? err.message : 'Unknown error';
+          failedCount += batch.length;
+          await flushRecipientUpdates(
+            supabase,
+            batch.map((r) => ({
+              id: r.id,
+              status: 'failed' as const,
+              error_message: message,
+            })),
+          );
         }
 
         const progressPct =
