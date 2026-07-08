@@ -124,6 +124,11 @@ interface MessageThreadProps {
    */
   contactPanelOpen?: boolean;
   onToggleContactPanel?: () => void;
+  /**
+   * Mobile/tablet (<lg): opens the contact panel in a drawer, since the
+   * static desktop panel is hidden there. The page owns the drawer.
+   */
+  onOpenContactSheet?: () => void;
 }
 
 function formatDateSeparator(dateStr: string): string {
@@ -182,6 +187,7 @@ export function MessageThread({
   onRefresh,
   contactPanelOpen,
   onToggleContactPanel,
+  onOpenContactSheet,
 }: MessageThreadProps) {
   const { user } = useAuth();
   const { getPresence, getRow, now } = usePresence();
@@ -1403,6 +1409,20 @@ export function MessageThread({
               ) : (
                 <PanelRightOpen className="h-4 w-4" />
               )}
+            </button>
+          )}
+
+          {/* Mobile/tablet (<lg): the static contact panel is hidden, so
+              this opens it in a drawer instead. Issue #258. */}
+          {onOpenContactSheet && (
+            <button
+              type="button"
+              onClick={onOpenContactSheet}
+              aria-label="Show contact panel"
+              title="Contact"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:hidden"
+            >
+              <PanelRightOpen className="h-4 w-4" />
             </button>
           )}
         </div>
