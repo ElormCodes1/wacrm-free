@@ -47,14 +47,15 @@ services:
       - wacrm-net
 
   evolution-api:
-    # Thin patched Evolution image (see evolution-patch/): the published
-    # evoapicloud/evolution-api:latest bundle patched to forward
-    # message-receipt.update (WhatsApp status view receipts, incl. the
-    # viewer's jid) as a webhook event, which stock Evolution discards.
-    # Powers "seen by" on your own statuses. Rebuild after pulling a newer
-    # base image to re-apply the patch.
+    # Built from our own Evolution source checkout (../evolution-api, pinned
+    # to 2.3.7) so every patch is a normal, code-level TypeScript edit rather
+    # than post-build surgery on the minified bundle. Patches live in that
+    # repo's src/ and include: forwarding message-receipt.update (status-view
+    # "seen by", incl. the viewer's jid) and pin/mute/star chat endpoints.
+    # Rebuild after editing the source: docker compose up -d --build evolution-api
     build:
-      context: ./evolution-patch
+      context: ../evolution-api
+      dockerfile: Dockerfile
     image: wacrm-evolution-api:patched
     container_name: wacrm_evolution_api
     restart: unless-stopped

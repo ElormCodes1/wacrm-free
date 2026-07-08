@@ -723,6 +723,49 @@ export async function markChatUnread(args: {
   )
 }
 
+/** Pin/unpin a chat on WhatsApp (chatModify). */
+export async function pinChat(args: {
+  instanceName: string
+  chatJid: string
+  pin: boolean
+}): Promise<void> {
+  await evolutionFetch(`/chat/pinChat/${encodeURIComponent(args.instanceName)}`, {
+    method: 'POST',
+    body: { chat: args.chatJid, pin: args.pin },
+  })
+}
+
+/** Mute a chat on WhatsApp for `durationMs`, or null to unmute (chatModify). */
+export async function muteChat(args: {
+  instanceName: string
+  chatJid: string
+  mute: number | null
+}): Promise<void> {
+  await evolutionFetch(`/chat/muteChat/${encodeURIComponent(args.instanceName)}`, {
+    method: 'POST',
+    body: { chat: args.chatJid, mute: args.mute },
+  })
+}
+
+/** Star/unstar a message on WhatsApp (chatModify). */
+export async function starMessage(args: {
+  instanceName: string
+  chatJid: string
+  messageId: string
+  fromMe: boolean
+  star: boolean
+}): Promise<void> {
+  await evolutionFetch(`/chat/starMessage/${encodeURIComponent(args.instanceName)}`, {
+    method: 'POST',
+    body: {
+      chat: args.chatJid,
+      messageId: args.messageId,
+      fromMe: args.fromMe,
+      star: args.star,
+    },
+  })
+}
+
 // ============================================================
 // Profile: own + contact enrichment
 // ============================================================

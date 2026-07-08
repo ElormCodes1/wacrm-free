@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { archiveChat, markChatUnread } from '@/lib/whatsapp/provider/evolution'
+import { archiveChat, markChatUnread, pinChat, muteChat } from '@/lib/whatsapp/provider/evolution'
 import { resolveSendTarget } from '@/lib/whatsapp/resolve-send-target'
 
 /**
@@ -99,28 +99,52 @@ export async function POST(request: Request) {
     }
 
     if (action === 'pin' || action === 'unpin') {
-      // CRM-local — orders your inbox work queue, independent of the phone.
+      // Orders your inbox work queue; best-effort mirrored to WhatsApp so the
+      // phone's chat list stays in sync.
       await supabase
         .from('conversations')
         .update({ pinned_at: action === 'pin' ? now : null, updated_at: now })
         .eq('id', conversation_id)
+      const target = await resolveSendTarget(supabase, accountId, conversation_id)
+      if (target) {
+        try {
+          await pinChat({
+            instanceName: target.instanceName,
+            chatJid: target.remoteJid,
+            pin: action === 'pin',
+          })
+        } catch {
+          /* local pin already applied */
+        }
+      }
       return NextResponse.json({ success: true })
     }
 
     if (action === 'mute' || action === 'unmute') {
-      // CRM-local — mutes unread emphasis. `hours` limits the duration;
-      // omitted = indefinite (a far-future sentinel).
-      let muted_until: string | null = null
-      if (action === 'mute') {
-        muted_until =
-          hours && hours > 0
-            ? new Date(Date.now() + hours * 3_600_000).toISOString()
-            : '2999-12-31T00:00:00.000Z'
-      }
+      // Mutes unread emphasis. `hours` limits the duration; omitted = a
+      // far-future sentinel (indefinite). Best-effort mirrored to WhatsApp.
+      const durationMs =
+        hours && hours > 0 ? hours * 3_600_000 : 365 * 24 * 3_600_000
+      const muted_until =
+        action === 'mute'
+          ? new Date(Date.now() + durationMs).toISOString()
+          : null
       await supabase
         .from('conversations')
         .update({ muted_until, updated_at: now })
         .eq('id', conversation_id)
+      const target = await resolveSendTarget(supabase, accountId, conversation_id)
+      if (target) {
+        try {
+          await muteChat({
+            instanceName: target.instanceName,
+            chatJid: target.remoteJid,
+            mute: action === 'mute' ? durationMs : null,
+          })
+        } catch {
+          /* local mute already applied */
+        }
+      }
       return NextResponse.json({ success: true })
     }
 

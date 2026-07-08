@@ -767,7 +767,14 @@ export function MessageThread({
       if (error) {
         toast.error("Failed to update star");
         onMessagesLoadedRef.current(messages);
+        return;
       }
+      // Best-effort mirror to WhatsApp (chatModify star). Fire-and-forget.
+      void fetch("/api/whatsapp/message/star", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message_row_id: msg.id, star: !!starred_at }),
+      });
     },
     [messages],
   );
