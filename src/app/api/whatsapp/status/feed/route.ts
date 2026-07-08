@@ -135,15 +135,10 @@ export async function GET() {
     const byStatus = new Map<string, StatusViewer[]>()
     for (const v of views ?? []) {
       const c = pickContact(v)
-      // A viewer identified only by a WhatsApp LID (privacy id, not a real
-      // phone) with no resolvable name — show a friendly label instead of
-      // the raw 15+ digit id.
-      const isLid =
-        (typeof v.viewer_jid === 'string' && v.viewer_jid.endsWith('@lid')) ||
-        (!v.viewer_jid && (v.viewer_phone?.length ?? 0) >= 15)
-      const resolvedName = c?.name || v.viewer_name
       const viewer: StatusViewer = {
-        name: resolvedName || (isLid ? 'WhatsApp user' : v.viewer_phone),
+        // Name when we have one (CRM contact, or the viewer's WhatsApp
+        // pushName); otherwise fall back to the number.
+        name: c?.name || v.viewer_name || v.viewer_phone,
         phone: v.viewer_phone,
         // CRM contact avatar first, else the viewer's WhatsApp profile pic.
         avatar_url: c?.avatar_url || v.viewer_avatar_url || null,
