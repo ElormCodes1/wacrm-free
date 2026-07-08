@@ -57,7 +57,7 @@ export default function InboxPage() {
    * below reconciles to the stored value right after mount instead.
    */
   const [contactPanelOpen, setContactPanelOpen] = useState(true);
-  // Mobile/tablet (<lg): the static contact panel is hidden, so it opens
+  // Mobile/tablet (<xl): the static contact panel is hidden, so it opens
   // in a drawer instead. Separate from the desktop open/collapse state.
   const [mobileContactOpen, setMobileContactOpen] = useState(false);
   useEffect(() => {
@@ -647,7 +647,7 @@ export default function InboxPage() {
             On mobile it's always hidden (the `lg:block` below), so the
             toggle — which is itself desktop-only — never affects it. */}
         {contactPanelOpen && (
-          <div className="hidden lg:block">
+          <div className="hidden xl:block">
             <ContactSidebar
               contact={activeContact}
               onGroupResolved={handleGroupResolved}
@@ -662,7 +662,7 @@ export default function InboxPage() {
       <Sheet open={mobileContactOpen} onOpenChange={setMobileContactOpen}>
         <SheetContent
           side="right"
-          className="w-70 max-w-[88vw] p-0 lg:hidden"
+          className="w-70 max-w-[88vw] p-0 xl:hidden"
         >
           <SheetTitle className="sr-only">Contact details</SheetTitle>
           <ContactSidebar

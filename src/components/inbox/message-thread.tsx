@@ -125,7 +125,7 @@ interface MessageThreadProps {
   contactPanelOpen?: boolean;
   onToggleContactPanel?: () => void;
   /**
-   * Mobile/tablet (<lg): opens the contact panel in a drawer, since the
+   * Mobile/tablet (<xl): opens the contact panel in a drawer, since the
    * static desktop panel is hidden there. The page owns the drawer.
    */
   onOpenContactSheet?: () => void;
@@ -1400,7 +1400,7 @@ export function MessageThread({
               aria-pressed={contactPanelOpen}
               title={contactPanelOpen ? "Hide contact" : "Show contact"}
               className={cn(
-                "hidden h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-muted hover:text-foreground lg:inline-flex",
+                "hidden h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-muted hover:text-foreground xl:inline-flex",
                 contactPanelOpen ? "text-primary" : "text-muted-foreground",
               )}
             >
@@ -1412,7 +1412,7 @@ export function MessageThread({
             </button>
           )}
 
-          {/* Mobile/tablet (<lg): the static contact panel is hidden, so
+          {/* Mobile/tablet (<xl): the static contact panel is hidden, so
               this opens it in a drawer instead. Issue #258. */}
           {onOpenContactSheet && (
             <button
@@ -1420,7 +1420,7 @@ export function MessageThread({
               onClick={onOpenContactSheet}
               aria-label="Show contact panel"
               title="Contact"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:hidden"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground xl:hidden"
             >
               <PanelRightOpen className="h-4 w-4" />
             </button>

@@ -592,7 +592,7 @@ export function MessageComposer({
                 <Paperclip className="h-4 w-4" />
               )}
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="border-border bg-popover">
+            <DropdownMenuContent align="start" className="max-h-[60vh] overflow-y-auto border-border bg-popover">
               <DropdownMenuItem onClick={() => imageInputRef.current?.click()}>
                 <ImageIcon className="mr-2 h-4 w-4" />
                 Photo
