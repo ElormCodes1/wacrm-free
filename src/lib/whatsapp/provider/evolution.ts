@@ -1454,6 +1454,49 @@ export async function updateGroupParticipants(
   })
 }
 
+/** A person who has requested to join a group with admin approval on. */
+export interface GroupPendingParticipant {
+  /** Requester JID (may be @lid or @s.whatsapp.net). Pass back verbatim. */
+  jid: string
+  phone: string
+}
+
+/**
+ * List the pending join requests for a group (admin-approval groups).
+ * Backed by our patched Evolution `/group/pendingParticipants`
+ * (Baileys `groupRequestParticipantsList`). Socket-safe (a group IQ read).
+ */
+export async function fetchGroupPendingParticipants(
+  instanceName: string,
+  groupJid: string,
+): Promise<GroupPendingParticipant[]> {
+  const data = await evolutionFetch<{ participants?: unknown }>(
+    groupPath(instanceName, 'pendingParticipants', groupJid),
+    { method: 'GET' },
+  )
+  const raw = Array.isArray(data?.participants) ? data.participants : []
+  return raw.map((p) => {
+    const rec = (p ?? {}) as Record<string, unknown>
+    const jid = String(rec.jid ?? '')
+    return { jid, phone: jidToPhone(jid) }
+  })
+}
+
+/** Approve or reject pending join requests. Patched Evolution
+ *  `/group/updatePendingParticipant` (Baileys
+ *  `groupRequestParticipantsUpdate`). */
+export async function updateGroupPendingParticipants(
+  instanceName: string,
+  groupJid: string,
+  action: 'approve' | 'reject',
+  participants: string[],
+): Promise<void> {
+  await evolutionFetch(groupPath(instanceName, 'updatePendingParticipant', groupJid), {
+    method: 'POST',
+    body: { groupJid, action, participants },
+  })
+}
+
 export type GroupSettingAction =
   | 'announcement'
   | 'not_announcement'

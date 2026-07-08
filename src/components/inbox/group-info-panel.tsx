@@ -20,6 +20,7 @@ import {
   Megaphone,
   Lock,
   MessageSquare,
+  UserRoundCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -84,6 +85,9 @@ export function GroupInfoPanel({
 
   const [invite, setInvite] = useState<{ code: string; url: string } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  // Pending join requests (admin-approval groups) — only the group owner
+  // can see/act on them, so this stays empty for non-owners.
+  const [requests, setRequests] = useState<Array<{ jid: string; phone: string }>>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -111,6 +115,24 @@ export function GroupInfoPanel({
   useEffect(() => {
     load();
   }, [load]);
+
+  // Load pending join requests once we know the user owns the group
+  // (WhatsApp only returns them to admins; non-owners would just 502).
+  const loadRequests = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/whatsapp/group/${groupId}/requests`);
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(data.requests)) {
+        setRequests(data.requests as Array<{ jid: string; phone: string }>);
+      }
+    } catch {
+      /* leave requests empty */
+    }
+  }, [groupId]);
+
+  useEffect(() => {
+    if (amOwner) loadRequests();
+  }, [amOwner, loadRequests]);
 
   async function call(
     label: string,
@@ -190,6 +212,23 @@ export function GroupInfoPanel({
       }),
     );
     if (ok) load();
+  }
+
+  async function requestAction(action: "approve" | "reject", jid: string) {
+    const ok = await call(
+      `${action}:${jid}`,
+      () =>
+        fetch(`/api/whatsapp/group/${groupId}/requests`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action, jids: [jid] }),
+        }),
+      action === "approve" ? "Member approved" : "Request rejected",
+    );
+    if (ok) {
+      setRequests((r) => r.filter((x) => x.jid !== jid));
+      if (action === "approve") load(); // refresh the members list
+    }
   }
 
   async function loadInvite() {
@@ -385,6 +424,59 @@ export function GroupInfoPanel({
             busy={busy === "locked" || busy === "unlocked"}
             onToggle={() => setSetting(group?.restrict ? "unlocked" : "locked")}
           />
+        </div>
+      )}
+
+      {/* Join requests — group owner only, admin-approval groups. */}
+      {amOwner && requests.length > 0 && (
+        <div>
+          <div className="flex items-center gap-1.5 px-1">
+            <UserRoundCheck className="h-3 w-3 text-primary" />
+            <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              Join requests ({requests.length})
+            </span>
+          </div>
+          <div className="mt-1 space-y-0.5">
+            {requests.map((r) => {
+              const approving = busy === `approve:${r.jid}`;
+              const rejecting = busy === `reject:${r.jid}`;
+              const working = approving || rejecting;
+              return (
+                <div
+                  key={r.jid}
+                  className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted"
+                >
+                  <span className="flex-1 truncate text-[13px] text-foreground">
+                    {r.phone || r.jid}
+                  </span>
+                  <button
+                    onClick={() => requestAction("approve", r.jid)}
+                    disabled={working}
+                    title="Approve"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-md text-positive hover:bg-card disabled:opacity-50"
+                  >
+                    {approving ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Check className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                  <button
+                    onClick={() => requestAction("reject", r.jid)}
+                    disabled={working}
+                    title="Reject"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-card hover:text-destructive disabled:opacity-50"
+                  >
+                    {rejecting ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <X className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
