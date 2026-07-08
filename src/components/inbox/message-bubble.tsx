@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import type { Message, MessageReaction } from "@/types";
 import {
@@ -29,6 +29,42 @@ interface MessageBubbleProps {
   reactions?: MessageReaction[];
   currentUserId?: string;
   onToggleReaction?: (emoji: string) => void;
+}
+
+// Render message text with URLs turned into clickable hyperlinks
+// (WhatsApp-style). Matches http(s):// and bare www. links, doesn't swallow
+// trailing sentence punctuation, and opens in a new tab.
+function LinkText({ text }: { text: string | null | undefined }) {
+  if (!text) return null;
+  // Local regex per call — a shared /g regex carries mutable lastIndex state.
+  const urlRe = /((?:https?:\/\/|www\.)[^\s]+)/gi;
+  const nodes: ReactNode[] = [];
+  let last = 0;
+  let key = 0;
+  for (const m of text.matchAll(urlRe)) {
+    const start = m.index ?? 0;
+    if (start > last) nodes.push(text.slice(last, start));
+    let url = m[0];
+    const tail = url.match(/[.,!?;:)\]}'"]+$/)?.[0] ?? "";
+    if (tail) url = url.slice(0, url.length - tail.length);
+    const href = url.startsWith("http") ? url : `https://${url}`;
+    nodes.push(
+      <a
+        key={key++}
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        className="break-all text-tick-read underline underline-offset-2 hover:opacity-80"
+      >
+        {url}
+      </a>,
+    );
+    if (tail) nodes.push(tail);
+    last = start + m[0].length;
+  }
+  if (last < text.length) nodes.push(text.slice(last));
+  return <>{nodes}</>;
 }
 
 // Delivery ticks. These only render on outbound (agent) bubbles, which
@@ -140,7 +176,7 @@ function MessageContent({ message }: { message: Message }) {
     case "text":
       return (
         <p className="whitespace-pre-wrap break-words text-sm">
-          {message.content_text}
+          <LinkText text={message.content_text} />
         </p>
       );
 
@@ -154,7 +190,7 @@ function MessageContent({ message }: { message: Message }) {
           )}
           {message.content_text && (
             <p className="mt-1 whitespace-pre-wrap break-words text-sm">
-              {message.content_text}
+              <LinkText text={message.content_text} />
             </p>
           )}
         </div>
@@ -174,7 +210,7 @@ function MessageContent({ message }: { message: Message }) {
           )}
           {message.content_text && (
             <p className="mt-1 whitespace-pre-wrap break-words text-sm">
-              {message.content_text}
+              <LinkText text={message.content_text} />
             </p>
           )}
         </div>
@@ -218,7 +254,7 @@ function MessageContent({ message }: { message: Message }) {
           </span>
           {message.content_text && (
             <p className="mt-1 whitespace-pre-wrap break-words text-sm">
-              {message.content_text}
+              <LinkText text={message.content_text} />
             </p>
           )}
         </div>
@@ -269,7 +305,7 @@ function MessageContent({ message }: { message: Message }) {
             Button reply
           </span>
           <p className="whitespace-pre-wrap break-words text-sm">
-            {message.content_text || "[Interactive reply]"}
+            <LinkText text={message.content_text || "[Interactive reply]"} />
           </p>
         </div>
       );
@@ -278,7 +314,7 @@ function MessageContent({ message }: { message: Message }) {
     default:
       return (
         <p className="whitespace-pre-wrap break-words text-sm">
-          {message.content_text || "[Unsupported message type]"}
+          <LinkText text={message.content_text || "[Unsupported message type]"} />
         </p>
       );
   }
