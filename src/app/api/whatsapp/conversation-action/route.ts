@@ -124,6 +124,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true })
     }
 
+    if (action === 'delete') {
+      // Hard delete from the CRM. messages (+ their reactions) cascade off
+      // the conversation FK; tasks referencing it are SET NULL. CRM-local —
+      // the chat stays on the phone's WhatsApp.
+      await supabase.from('conversations').delete().eq('id', conversation_id)
+      return NextResponse.json({ success: true })
+    }
+
     return NextResponse.json({ error: `Unsupported action "${action}"` }, { status: 400 })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Internal server error'

@@ -38,6 +38,10 @@ import {
   PinOff,
   Bell,
   BellOff,
+  Search,
+  ChevronUp,
+  X,
+  Trash2,
   Users,
 } from "lucide-react";
 import { format, isToday, isYesterday } from "date-fns";
@@ -208,6 +212,11 @@ export function MessageThread({
     }, 700);
   }, [isRefreshing, onRefresh]);
   const [replyTo, setReplyTo] = useState<ReplyDraft | null>(null);
+
+  // In-conversation search.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [matchIndex, setMatchIndex] = useState(0);
 
   // Profiles are bounded by RLS to rows the current user is allowed to
   // see — today that's just the current user, but the dropdown keeps the
@@ -763,6 +772,65 @@ export function MessageThread({
     [messages],
   );
 
+  // In-conversation search — ids of messages whose text contains the query,
+  // in thread order. Client-side over the already-loaded messages.
+  const matchIds = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [] as string[];
+    return messages
+      .filter((m) => (m.content_text ?? "").toLowerCase().includes(q))
+      .map((m) => m.id);
+  }, [searchQuery, messages]);
+  const activeMatchId = matchIds.length
+    ? matchIds[Math.min(matchIndex, matchIds.length - 1)]
+    : null;
+
+  // Scroll the current match into view as the user navigates.
+  useEffect(() => {
+    if (!activeMatchId) return;
+    document
+      .getElementById(`msg-${activeMatchId}`)
+      ?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [activeMatchId]);
+
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false);
+    setSearchQuery("");
+    setMatchIndex(0);
+  }, []);
+
+  const gotoMatch = useCallback(
+    (dir: 1 | -1) => {
+      setMatchIndex((i) => {
+        const n = matchIds.length;
+        return n ? (i + dir + n) % n : 0;
+      });
+    },
+    [matchIds.length],
+  );
+
+  const handleDeleteChat = useCallback(async () => {
+    if (!conversation) return;
+    if (
+      !window.confirm(
+        "Delete this chat from the CRM? It removes the conversation and its messages here — the chat stays on WhatsApp. This can't be undone.",
+      )
+    )
+      return;
+    const res = await fetch("/api/whatsapp/conversation-action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversation_id: conversation.id, action: "delete" }),
+    });
+    if (!res.ok) {
+      toast.error("Delete failed");
+      return;
+    }
+    toast.success("Chat deleted");
+    onBack?.();
+    onRefresh?.();
+  }, [conversation, onBack, onRefresh]);
+
   const router = useRouter();
 
   // Open the Tasks page with the new-task dialog pre-linked to this chat.
@@ -1051,6 +1119,21 @@ export function MessageThread({
             </button>
           )}
 
+          {/* Search this conversation */}
+          <button
+            type="button"
+            onClick={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
+            aria-label="Search chat"
+            aria-pressed={searchOpen}
+            title="Search"
+            className={cn(
+              "inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-muted hover:text-foreground",
+              searchOpen ? "text-primary" : "text-muted-foreground",
+            )}
+          >
+            <Search className="h-3.5 w-3.5" />
+          </button>
+
           {/* Status dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger className={cn(
@@ -1209,10 +1292,72 @@ export function MessageThread({
                 <Ban className="mr-2 h-4 w-4" />
                 Block contact
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleDeleteChat} className="text-sm text-red-500">
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete chat
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </div>
+
+      {/* In-conversation search bar */}
+      {searchOpen && (
+        <div className="flex items-center gap-1 border-b border-border bg-secondary px-4 py-2">
+          <Search className="mr-1 h-4 w-4 shrink-0 text-muted-foreground" />
+          <input
+            autoFocus
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setMatchIndex(0);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                gotoMatch(e.shiftKey ? -1 : 1);
+              } else if (e.key === "Escape") {
+                closeSearch();
+              }
+            }}
+            placeholder="Search this chat"
+            className="flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+          />
+          {searchQuery.trim() && (
+            <span className="shrink-0 px-1 text-xs text-muted-foreground">
+              {matchIds.length
+                ? `${Math.min(matchIndex, matchIds.length - 1) + 1}/${matchIds.length}`
+                : "0/0"}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => gotoMatch(-1)}
+            disabled={!matchIds.length}
+            aria-label="Previous match"
+            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted disabled:opacity-40"
+          >
+            <ChevronUp className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => gotoMatch(1)}
+            disabled={!matchIds.length}
+            aria-label="Next match"
+            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted disabled:opacity-40"
+          >
+            <ChevronDown className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={closeSearch}
+            aria-label="Close search"
+            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {/* Messages Area */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
@@ -1262,27 +1407,35 @@ export function MessageThread({
                       void postReaction(msg.id, next);
                     };
                     return (
-                      <MessageActions
+                      <div
                         key={msg.id}
-                        message={msg}
-                        onReply={() => handleStartReply(msg)}
-                        onReact={(emoji) => {
-                          if (emoji) void postReaction(msg.id, emoji);
-                        }}
-                        onEdit={() => handleEditMessage(msg)}
-                        onDelete={() => handleDeleteMessage(msg)}
-                        onForward={() => setForwardMsgId(msg.id)}
-                        onStar={() => handleToggleStar(msg)}
-                        isStarred={!!msg.starred_at}
+                        id={`msg-${msg.id}`}
+                        className={cn(
+                          "rounded-lg transition-colors",
+                          activeMatchId === msg.id && "bg-primary/10",
+                        )}
                       >
-                        <MessageBubble
+                        <MessageActions
                           message={msg}
-                          reply={reply}
-                          reactions={msgReactions}
-                          currentUserId={user?.id}
-                          onToggleReaction={handlePillToggle}
-                        />
-                      </MessageActions>
+                          onReply={() => handleStartReply(msg)}
+                          onReact={(emoji) => {
+                            if (emoji) void postReaction(msg.id, emoji);
+                          }}
+                          onEdit={() => handleEditMessage(msg)}
+                          onDelete={() => handleDeleteMessage(msg)}
+                          onForward={() => setForwardMsgId(msg.id)}
+                          onStar={() => handleToggleStar(msg)}
+                          isStarred={!!msg.starred_at}
+                        >
+                          <MessageBubble
+                            message={msg}
+                            reply={reply}
+                            reactions={msgReactions}
+                            currentUserId={user?.id}
+                            onToggleReaction={handlePillToggle}
+                          />
+                        </MessageActions>
+                      </div>
                     );
                   })}
                 </div>
