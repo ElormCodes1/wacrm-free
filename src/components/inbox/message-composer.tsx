@@ -24,6 +24,7 @@ import {
   MapPin,
   UserRound,
   BarChart3,
+  CalendarPlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -617,6 +618,10 @@ export function MessageComposer({
               <DropdownMenuItem onClick={() => setRichKind("poll")}>
                 <BarChart3 className="mr-2 h-4 w-4" />
                 Poll
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setRichKind("event")}>
+                <CalendarPlus className="mr-2 h-4 w-4" />
+                Event
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

@@ -18,6 +18,7 @@ import {
   BarChart3,
   PhoneCall,
   Star,
+  CalendarClock,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ReplyQuote } from "./reply-quote";
@@ -292,6 +293,25 @@ function MessageContent({ message }: { message: Message }) {
           <span>{message.content_text || "Call"}</span>
         </div>
       );
+
+    case "event": {
+      // content_text is a summary: first line = name, rest = 🗓 when /
+      // 📍 where / description (see formatEventSummary).
+      const [title, ...detail] = (message.content_text || "Event").split("\n");
+      return (
+        <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-background/40 p-2 text-sm">
+          <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+          <div className="min-w-0">
+            <p className="font-medium break-words">{title}</p>
+            {detail.length > 0 && (
+              <p className="mt-0.5 whitespace-pre-wrap break-words text-xs text-muted-foreground">
+                {detail.join("\n")}
+              </p>
+            )}
+          </div>
+        </div>
+      );
+    }
 
     case "interactive": {
       // Customer tapped a reply button or list row on a message the bot

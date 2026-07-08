@@ -14,12 +14,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-export type RichKind = "location" | "contact" | "poll";
+export type RichKind = "location" | "contact" | "poll" | "event";
 
 const TITLES: Record<RichKind, string> = {
   location: "Send location",
   contact: "Send contact card",
   poll: "Create poll",
+  event: "Create event",
 };
 
 /**
@@ -55,16 +56,79 @@ export function RichMessageDialog({
   const [pollOptions, setPollOptions] = useState<string[]>(["", ""]);
   const [pollMulti, setPollMulti] = useState(false);
 
+  // event
+  const [evName, setEvName] = useState("");
+  const [evDesc, setEvDesc] = useState("");
+  const [evStart, setEvStart] = useState("");
+  const [evEnd, setEvEnd] = useState("");
+  const [evLocation, setEvLocation] = useState("");
+
   const reset = () => {
     setLat(""); setLng(""); setLocName(""); setLocAddress("");
     setCName(""); setCPhone(""); setCOrg("");
     setPollName(""); setPollOptions(["", ""]); setPollMulti(false);
+    setEvName(""); setEvDesc(""); setEvStart(""); setEvEnd(""); setEvLocation("");
   };
 
   const close = () => { reset(); onClose(); };
 
   async function submit() {
     if (!kind) return;
+
+    // Events go to their own endpoint (native WhatsApp event/RSVP).
+    if (kind === "event") {
+      if (!evName.trim()) {
+        toast.error("Give the event a name.");
+        return;
+      }
+      if (!evStart) {
+        toast.error("Pick a start date & time.");
+        return;
+      }
+      const startSec = Math.floor(new Date(evStart).getTime() / 1000);
+      const endSec = evEnd ? Math.floor(new Date(evEnd).getTime() / 1000) : undefined;
+      if (!Number.isFinite(startSec)) {
+        toast.error("Invalid start date.");
+        return;
+      }
+      if (endSec !== undefined && endSec <= startSec) {
+        toast.error("End time must be after the start.");
+        return;
+      }
+      // No geocoding in the composer, so fold the venue into the
+      // description (a name-only WhatsApp event location needs real coords,
+      // which would otherwise map to 0,0).
+      const description = [evDesc.trim(), evLocation.trim() ? `📍 ${evLocation.trim()}` : ""]
+        .filter(Boolean)
+        .join("\n");
+      setSending(true);
+      try {
+        const res = await fetch("/api/whatsapp/send-event", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversation_id: conversationId,
+            name: evName.trim(),
+            description: description || undefined,
+            start_time: startSec,
+            end_time: endSec,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          toast.error(data.error ?? "Send failed");
+          return;
+        }
+        toast.success("Event sent");
+        close();
+      } catch {
+        toast.error("Send failed");
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
     let payload: Record<string, unknown>;
     if (kind === "location") {
       const latN = Number(lat), lngN = Number(lng);
@@ -212,6 +276,33 @@ export function RichMessageDialog({
               <input type="checkbox" checked={pollMulti} onChange={(e) => setPollMulti(e.target.checked)} />
               Allow multiple answers
             </label>
+          </div>
+        )}
+
+        {kind === "event" && (
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor="evname">Event name</Label>
+              <Input id="evname" value={evName} onChange={(e) => setEvName(e.target.value)} placeholder="Onboarding call" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label htmlFor="evstart">Starts</Label>
+                <Input id="evstart" type="datetime-local" value={evStart} onChange={(e) => setEvStart(e.target.value)} />
+              </div>
+              <div>
+                <Label htmlFor="evend">Ends (optional)</Label>
+                <Input id="evend" type="datetime-local" value={evEnd} onChange={(e) => setEvEnd(e.target.value)} />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="evloc">Location (optional)</Label>
+              <Input id="evloc" value={evLocation} onChange={(e) => setEvLocation(e.target.value)} placeholder="Accra office / Google Meet" />
+            </div>
+            <div>
+              <Label htmlFor="evdesc">Description (optional)</Label>
+              <Input id="evdesc" value={evDesc} onChange={(e) => setEvDesc(e.target.value)} placeholder="Quick intro + setup" />
+            </div>
           </div>
         )}
 

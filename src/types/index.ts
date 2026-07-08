@@ -278,7 +278,9 @@ export type ContentType =
   /** Poll. */
   | 'poll'
   /** Logged incoming WhatsApp call. */
-  | 'call';
+  | 'call'
+  /** WhatsApp calendar/event message (native RSVP). */
+  | 'event';
 export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
 
 export interface Message {

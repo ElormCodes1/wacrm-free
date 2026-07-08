@@ -8,6 +8,7 @@ import {
   fetchInstance,
 } from '@/lib/whatsapp/provider/evolution'
 import { normalizePhone } from '@/lib/whatsapp/phone-utils'
+import { formatEventSummary } from '@/lib/whatsapp/event-summary'
 import { findExistingContact } from '@/lib/contacts/dedupe'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
@@ -66,6 +67,13 @@ interface WhatsAppMessage {
   audio?: { mime_type?: string }
   sticker?: { mime_type?: string }
   location?: { latitude: number; longitude: number; name?: string; address?: string }
+  event?: {
+    name: string
+    description?: string
+    startTime?: number
+    endTime?: number
+    location?: { name?: string; address?: string }
+  }
   reaction?: { message_id: string; emoji: string }
   interactive?: {
     type: 'button_reply' | 'list_reply'
@@ -930,6 +938,22 @@ function adaptMessage(data: any): WhatsAppMessage {
       },
     }
   }
+  if (m.eventMessage) {
+    const ev = m.eventMessage
+    return {
+      ...base,
+      type: 'event',
+      event: {
+        name: ev.name,
+        description: ev.description,
+        startTime: typeof ev.startTime === 'number' ? ev.startTime : Number(ev.startTime) || undefined,
+        endTime: typeof ev.endTime === 'number' ? ev.endTime : Number(ev.endTime) || undefined,
+        location: ev.location
+          ? { name: ev.location.name, address: ev.location.address }
+          : undefined,
+      },
+    }
+  }
   if (m.reactionMessage) {
     return {
       ...base,
@@ -1286,7 +1310,7 @@ async function processMessage(
   }
 
   const ALLOWED_CONTENT_TYPES = new Set([
-    'text', 'image', 'document', 'audio', 'video', 'location', 'template', 'interactive',
+    'text', 'image', 'document', 'audio', 'video', 'location', 'template', 'interactive', 'event',
   ])
   const contentType = ALLOWED_CONTENT_TYPES.has(message.type)
     ? message.type
@@ -1509,6 +1533,21 @@ async function parseMessageContent(
         return { ...empty, contentText: locationText }
       }
       return empty
+
+    case 'event':
+      if (message.event?.name && typeof message.event.startTime === 'number') {
+        return {
+          ...empty,
+          contentText: formatEventSummary({
+            name: message.event.name,
+            description: message.event.description,
+            startTime: message.event.startTime,
+            endTime: message.event.endTime,
+            location: message.event.location,
+          }),
+        }
+      }
+      return { ...empty, contentText: message.event?.name || '[Event]' }
 
     case 'reaction':
       return { ...empty, contentText: message.reaction?.emoji || null }

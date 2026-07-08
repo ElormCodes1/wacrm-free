@@ -689,6 +689,38 @@ export async function sendPoll(args: {
   return { messageId: messageIdFrom(res) }
 }
 
+export interface SendEventArgs {
+  instanceName: string
+  to: string
+  name: string
+  description?: string
+  /** Event start, unix seconds. */
+  startTime: number
+  /** Optional event end, unix seconds. */
+  endTime?: number
+  extraGuestsAllowed?: boolean
+  location?: { latitude: number; longitude: number; name?: string; address?: string }
+}
+
+/**
+ * Send a calendar event (WhatsApp's native event message with RSVP). Backed
+ * by our patched Evolution `/message/sendEvent` (Baileys eventMessage).
+ * Socket-safe — a normal consumer WhatsApp message (not nativeFlow).
+ */
+export async function sendEvent(args: SendEventArgs): Promise<EvolutionSendResult> {
+  const { instanceName, to, name, description, startTime, endTime, extraGuestsAllowed, location } = args
+  const body: Record<string, unknown> = { number: to, name, startTime }
+  if (description) body.description = description
+  if (endTime) body.endTime = endTime
+  if (typeof extraGuestsAllowed === 'boolean') body.extraGuestsAllowed = extraGuestsAllowed
+  if (location) body.location = location
+  const res = await evolutionFetch<EvolutionSendResponse>(
+    `/message/sendEvent/${encodeURIComponent(instanceName)}`,
+    { method: 'POST', body },
+  )
+  return { messageId: messageIdFrom(res) }
+}
+
 /** Send a sticker (webp URL or base64). */
 export async function sendSticker(args: {
   instanceName: string
