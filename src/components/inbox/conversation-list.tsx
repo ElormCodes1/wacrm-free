@@ -43,7 +43,7 @@ const STATUS_COLORS: Record<ConversationStatus, string> = {
   closed: "bg-muted-foreground",
 };
 
-type InboxFilter = ConversationStatus | "all" | "unread" | "archived";
+type InboxFilter = ConversationStatus | "all" | "unread" | "archived" | "hidden";
 
 const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = [
   { label: "All", value: "all" },
@@ -52,6 +52,7 @@ const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = [
   { label: "Pending", value: "pending" },
   { label: "Closed", value: "closed" },
   { label: "Archived", value: "archived" },
+  { label: "Hidden", value: "hidden" },
 ];
 
 // Chat-type filter: individual contacts vs WhatsApp groups (a group is a
@@ -165,6 +166,7 @@ export function ConversationList({
   });
 
   const showArchived = filter === "archived";
+  const showHidden = filter === "hidden";
 
   useEffect(() => {
     const supabase = createClient();
@@ -172,9 +174,15 @@ export function ConversationList({
 
     (async () => {
       let q = supabase.from("conversations").select(CONVERSATION_SELECT);
-      q = showArchived
-        ? q.not("archived_at", "is", null)
-        : q.is("archived_at", null);
+      // Archived and Hidden each fetch their own set; every other view
+      // excludes both (normal inbox = not archived AND not hidden).
+      if (showArchived) {
+        q = q.not("archived_at", "is", null);
+      } else if (showHidden) {
+        q = q.not("hidden_at", "is", null);
+      } else {
+        q = q.is("archived_at", null).is("hidden_at", null);
+      }
       const { data, error } = await q.order("last_message_at", { ascending: false });
 
       if (cancelled) return;
@@ -202,7 +210,7 @@ export function ConversationList({
     // the realtime channel reconnects or the tab regains focus — catches
     // up on any events sent while the WS was disconnected or throttled.
     // `showArchived` refetches when toggling the Archived view.
-  }, [resyncToken, showArchived]);
+  }, [resyncToken, showArchived, showHidden]);
 
   // Tag definitions for the filter picker — loaded once so labels/colours
   // stay stable regardless of which conversations happen to be loaded.
@@ -241,8 +249,9 @@ export function ConversationList({
 
     if (filter === "unread") {
       result = result.filter((c) => c.unread_count > 0);
-    } else if (filter !== "all" && filter !== "archived") {
-      // "archived" fetches its own set from the server; skip status filtering.
+    } else if (filter !== "all" && filter !== "archived" && filter !== "hidden") {
+      // "archived"/"hidden" fetch their own set from the server; those aren't
+      // conversation statuses, so skip status filtering for them.
       result = result.filter((c) => c.status === filter);
     }
 

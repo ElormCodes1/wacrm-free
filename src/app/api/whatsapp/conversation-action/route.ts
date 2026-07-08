@@ -86,6 +86,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true })
     }
 
+    if (action === 'hide' || action === 'unhide') {
+      // CRM-local only — no WhatsApp mirror. Hidden conversations drop out
+      // of every inbox view; you handle those chats inside WhatsApp itself.
+      await supabase
+        .from('conversations')
+        .update({ hidden_at: action === 'hide' ? now : null, updated_at: now })
+        .eq('id', conversation_id)
+      return NextResponse.json({ success: true })
+    }
+
     return NextResponse.json({ error: `Unsupported action "${action}"` }, { status: 400 })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Internal server error'

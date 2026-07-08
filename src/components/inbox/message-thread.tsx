@@ -30,6 +30,8 @@ import {
   Archive,
   MailOpen,
   Ban,
+  EyeOff,
+  Eye,
   Users,
 } from "lucide-react";
 import { format, isToday, isYesterday } from "date-fns";
@@ -736,7 +738,14 @@ export function MessageThread({
 
   // Conversation-level actions (archive, mark unread, block).
   const conversationAction = useCallback(
-    async (action: "archive" | "unarchive" | "mark_unread") => {
+    async (
+      action:
+        | "archive"
+        | "unarchive"
+        | "mark_unread"
+        | "hide"
+        | "unhide",
+    ) => {
       if (!conversation) return;
       const res = await fetch("/api/whatsapp/conversation-action", {
         method: "POST",
@@ -747,13 +756,14 @@ export function MessageThread({
         toast.error("Action failed");
         return;
       }
-      toast.success(
-        action === "archive"
-          ? "Conversation archived"
-          : action === "unarchive"
-            ? "Conversation unarchived"
-            : "Marked unread",
-      );
+      const messages: Record<string, string> = {
+        archive: "Conversation archived",
+        unarchive: "Conversation unarchived",
+        mark_unread: "Marked unread",
+        hide: "Chat hidden",
+        unhide: "Chat unhidden",
+      };
+      toast.success(messages[action] ?? "Done");
       onRefresh?.();
     },
     [conversation, onRefresh],
@@ -1110,6 +1120,17 @@ export function MessageThread({
                 <MailOpen className="mr-2 h-4 w-4" />
                 Mark as unread
               </DropdownMenuItem>
+              {conversation?.hidden_at ? (
+                <DropdownMenuItem onClick={() => conversationAction("unhide")} className="text-sm">
+                  <Eye className="mr-2 h-4 w-4" />
+                  Unhide chat
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem onClick={() => conversationAction("hide")} className="text-sm">
+                  <EyeOff className="mr-2 h-4 w-4" />
+                  Hide chat
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleBlockContact} className="text-sm text-red-500">
                 <Ban className="mr-2 h-4 w-4" />

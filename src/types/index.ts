@@ -175,6 +175,9 @@ export interface Conversation {
   updated_at: string;
   /** Set when the conversation is archived (hidden from the active inbox). */
   archived_at?: string | null;
+  /** Set when the conversation is hidden — excluded from all inbox views,
+   *  handled inside WhatsApp only. Surfaced via the "Hidden" filter. */
+  hidden_at?: string | null;
   /** Which WhatsApp number this conversation is on (multi-number). */
   whatsapp_config_id?: string | null;
   /** Embedded number label, when fetched with CONVERSATION_SELECT. */
