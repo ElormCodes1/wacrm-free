@@ -40,7 +40,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -591,9 +590,9 @@ function AddNodeButton({ onAdd }: { onAdd: (type: NodeType) => void }) {
         {groupNodeTypesByCategory(types).map((group, i) => (
           <div key={group.id}>
             {i > 0 && <DropdownMenuSeparator />}
-            <DropdownMenuLabel className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
+            <div className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
               {group.label}
-            </DropdownMenuLabel>
+            </div>
             {group.types.map((t) => {
               const meta = NODE_META[t];
               return (

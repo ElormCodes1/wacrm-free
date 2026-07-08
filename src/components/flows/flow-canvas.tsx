@@ -88,7 +88,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -739,9 +738,9 @@ function CanvasAddNodeButton() {
         {groupNodeTypesByCategory(ADD_NODE_TYPES).map((group, i) => (
           <div key={group.id}>
             {i > 0 && <DropdownMenuSeparator />}
-            <DropdownMenuLabel className="text-muted-foreground px-2 py-1.5 text-[11px] font-semibold tracking-wider uppercase">
+            <div className="text-muted-foreground px-2 py-1.5 text-[11px] font-semibold tracking-wider uppercase">
               {group.label}
-            </DropdownMenuLabel>
+            </div>
             {group.types.map((t) => {
               const meta = NODE_META[t];
               return (

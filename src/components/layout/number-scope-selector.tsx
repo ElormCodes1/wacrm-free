@@ -5,7 +5,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -35,9 +34,9 @@ export function NumberScopeSelector() {
         <ChevronsUpDown className="h-3.5 w-3.5 text-muted-foreground" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56 border-border bg-popover">
-        <DropdownMenuLabel className="text-xs text-muted-foreground">
+        <div className="px-1.5 py-1 text-xs font-medium text-muted-foreground">
           WhatsApp number
-        </DropdownMenuLabel>
+        </div>
         <DropdownMenuItem onClick={() => setScope("all")} className="justify-between">
           <span>All numbers</span>
           {scope === "all" && <Check className="h-4 w-4 text-primary" />}
