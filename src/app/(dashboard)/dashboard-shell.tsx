@@ -21,24 +21,18 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
 
+  // No full-screen loading/`!user` gate here: middleware.ts already
+  // enforces auth on every dashboard route (unauthenticated requests are
+  // redirected before they reach us). Rendering `children` immediately
+  // lets Server-Component pages paint their content in the initial HTML
+  // instead of being hidden behind a client-side spinner while AuthProvider
+  // hydrates. This effect is just a client-side safety net for a session
+  // that expires mid-visit.
   useEffect(() => {
     if (!loading && !user) {
       router.push("/login");
     }
   }, [user, loading, router]);
-
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <p className="text-sm text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!user) return null;
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
