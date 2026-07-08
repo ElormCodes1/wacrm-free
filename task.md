@@ -27,7 +27,17 @@ writes (privacy, and likely profile-photo/settings) are NOT.** So:
 - [ ] ~~Privacy settings (change)~~ — ❌ CONFIRMED non-viable (write drops the socket). Read-only display possible but low value.
 - [ ] niche: emit call (`/call/offer`), per-number proxy (`/proxy/*`), WAVOIP token setting. [WIRE, low priority]
 
+### ⚠️ Finding: adding new Evolution REST routes = compiled-bundle surgery
+The patched image (`wacrm-free/evolution-patch/`) is built `FROM
+evoapicloud/evolution-api:latest` and string-patches the **minified**
+`/evolution/dist/main.js` (not TS source). The receipt patch was a 2-line
+anchor swap; adding a whole endpoint (route + controller method + service
+method + validation schema) means 3–4 fragile injections into minified code
+that break on every base-image bump. So "patch Evolution" is real work with
+real fragility — prefer CRM-local when the value is inbox-organization.
+
 ## Tier 2 — patch Evolution (Baileys has it, Evolution REST doesn't)
+- [x] **Chat actions: pin + mute** — ✅ DONE **CRM-local** (migration 042: pinned_at/muted_until; thread menu; pinned-first sort; greyed unread + mute icon). WhatsApp-phone mirror (chatModify pin/mute via a bundle patch) deferred — brittle, and CRM-queue organization is arguably better done CRM-side anyway. star-message/clear/delete still open.
 - [ ] **🏪 Store / catalog management** (commerce moat) — product create/edit/delete, edit business profile (hours/category/website/address), cover photo, order details. Only in Baileys → patch Evolution. [PATCH]
 - [ ] **Channels / Newsletters** — create, follow/unfollow, mute, post, react, fetch messages. Baileys newsletter* methods. [PATCH] (or [WAHA])
 - [ ] **Communities** — create, link/unlink groups, announcements, join-request approvals. Baileys community* methods. [PATCH]
