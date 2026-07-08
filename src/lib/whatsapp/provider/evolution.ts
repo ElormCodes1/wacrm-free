@@ -748,6 +748,50 @@ export async function sendEvent(args: SendEventArgs): Promise<EvolutionSendResul
   return { messageId: messageIdFrom(res) }
 }
 
+export interface SendProductArgs {
+  instanceName: string
+  /** Recipient digits. */
+  to: string
+  productId: string
+  title: string
+  description?: string
+  currency: string
+  /** Catalog price (minor units, as getCatalog returns it). */
+  price: number
+  retailerId?: string
+  url?: string
+  /** Product image (public URL or base64). */
+  image: string
+  /** JID of the business that owns the catalog. */
+  businessOwnerJid: string
+}
+
+/**
+ * Share a catalog product as a native WhatsApp product-card message
+ * (Baileys productMessage) into a conversation — a tappable card that opens
+ * the product in the recipient's WhatsApp. Backed by our patched Evolution
+ * `/message/sendProduct`.
+ */
+export async function sendProduct(args: SendProductArgs): Promise<EvolutionSendResult> {
+  const body: Record<string, unknown> = {
+    number: args.to,
+    productId: args.productId,
+    title: args.title,
+    currency: args.currency,
+    price: args.price,
+    image: args.image,
+    businessOwnerJid: args.businessOwnerJid,
+  }
+  if (args.description) body.description = args.description
+  if (args.retailerId) body.retailerId = args.retailerId
+  if (args.url) body.url = args.url
+  const res = await evolutionFetch<EvolutionSendResponse>(
+    `/message/sendProduct/${encodeURIComponent(args.instanceName)}`,
+    { method: 'POST', body },
+  )
+  return { messageId: messageIdFrom(res) }
+}
+
 /** Send a sticker (webp URL or base64). */
 export async function sendSticker(args: {
   instanceName: string

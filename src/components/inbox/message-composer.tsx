@@ -26,6 +26,7 @@ import {
   UserRound,
   BarChart3,
   CalendarPlus,
+  ShoppingBag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,6 +34,7 @@ import {
   type RichKind,
 } from "@/components/inbox/rich-message-dialog";
 import { AlbumDialog } from "@/components/inbox/album-dialog";
+import { ProductPickerDialog } from "@/components/inbox/product-picker-dialog";
 import { GatedButton } from "@/components/ui/gated-button";
 import {
   DropdownMenu,
@@ -147,6 +149,7 @@ export function MessageComposer({
   const [drafting, setDrafting] = useState(false);
   const [richKind, setRichKind] = useState<RichKind | null>(null);
   const [albumOpen, setAlbumOpen] = useState(false);
+  const [productOpen, setProductOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Media attachment state. `draft` holds an uploaded-but-not-yet-sent
@@ -630,6 +633,10 @@ export function MessageComposer({
                 <CalendarPlus className="mr-2 h-4 w-4" />
                 Event
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setProductOpen(true)}>
+                <ShoppingBag className="mr-2 h-4 w-4" />
+                Product
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -643,6 +650,12 @@ export function MessageComposer({
             conversationId={conversationId}
             open={albumOpen}
             onClose={() => setAlbumOpen(false)}
+          />
+
+          <ProductPickerDialog
+            conversationId={conversationId}
+            open={productOpen}
+            onClose={() => setProductOpen(false)}
           />
 
           <GatedButton
