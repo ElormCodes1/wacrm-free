@@ -1,31 +1,7 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { updateProduct, deleteProduct, type ProductInput } from '@/lib/whatsapp/provider/evolution'
-
-async function resolveInstance() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser()
-  if (error || !user) return { error: 'Unauthorized', status: 401 as const }
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('account_id')
-    .eq('user_id', user.id)
-    .maybeSingle()
-  const accountId = profile?.account_id as string | undefined
-  if (!accountId) return { error: 'No account', status: 403 as const }
-  const { data: configs } = await supabase
-    .from('whatsapp_config')
-    .select('instance_name, connection_state')
-    .eq('account_id', accountId)
-    .not('instance_name', 'is', null)
-    .order('created_at', { ascending: true })
-  const config = configs?.find((c) => c.connection_state === 'open') ?? configs?.[0]
-  if (!config?.instance_name) return { error: 'WhatsApp is not connected.', status: 400 as const }
-  return { instanceName: config.instance_name as string }
-}
+import { catalogWriteError } from '@/lib/whatsapp/store-errors'
+import { resolveStoreInstance } from '@/lib/whatsapp/store-instance'
 
 /** PATCH — update a product (resends the full product). */
 export async function PATCH(
@@ -33,7 +9,7 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> },
 ) {
   const { id } = await context.params
-  const ctx = await resolveInstance()
+  const ctx = await resolveStoreInstance()
   if ('error' in ctx) return NextResponse.json({ error: ctx.error }, { status: ctx.status })
   const body = (await request.json().catch(() => ({}))) as Partial<ProductInput>
   if (!body.name?.trim() || !body.currency?.trim() || typeof body.price !== 'number') {
@@ -56,8 +32,8 @@ export async function PATCH(
     })
     return NextResponse.json({ product })
   } catch (e) {
-    const m = e instanceof Error ? e.message : 'Failed to update product'
-    return NextResponse.json({ error: m }, { status: 502 })
+    const { error, status } = catalogWriteError(e)
+    return NextResponse.json({ error }, { status })
   }
 }
 
@@ -67,13 +43,13 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> },
 ) {
   const { id } = await context.params
-  const ctx = await resolveInstance()
+  const ctx = await resolveStoreInstance()
   if ('error' in ctx) return NextResponse.json({ error: ctx.error }, { status: ctx.status })
   try {
     await deleteProduct({ instanceName: ctx.instanceName, productIds: [id] })
     return NextResponse.json({ success: true })
   } catch (e) {
-    const m = e instanceof Error ? e.message : 'Failed to delete product'
-    return NextResponse.json({ error: m }, { status: 502 })
+    const { error, status } = catalogWriteError(e)
+    return NextResponse.json({ error }, { status })
   }
 }

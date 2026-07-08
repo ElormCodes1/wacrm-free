@@ -1,60 +1,37 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import {
   fetchCatalog,
-  fetchOwnBusinessProfile,
+  fetchCollections,
   createProduct,
   type ProductInput,
 } from '@/lib/whatsapp/provider/evolution'
+import { catalogWriteError } from '@/lib/whatsapp/store-errors'
+import { resolveStoreInstance } from '@/lib/whatsapp/store-instance'
 
-async function resolveInstance() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser()
-  if (error || !user) return { error: 'Unauthorized', status: 401 as const }
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('account_id')
-    .eq('user_id', user.id)
-    .maybeSingle()
-  const accountId = profile?.account_id as string | undefined
-  if (!accountId) return { error: 'No account', status: 403 as const }
-  const { data: configs } = await supabase
-    .from('whatsapp_config')
-    .select('instance_name, connection_state')
-    .eq('account_id', accountId)
-    .not('instance_name', 'is', null)
-    .order('created_at', { ascending: true })
-  const config = configs?.find((c) => c.connection_state === 'open') ?? configs?.[0]
-  if (!config?.instance_name) return { error: 'WhatsApp is not connected.', status: 400 as const }
-  return { instanceName: config.instance_name as string }
-}
-
-/** GET — the store's business status + catalog products. */
+/** GET — the store's business status + catalog products + collections. */
 export async function GET() {
-  const ctx = await resolveInstance()
+  const ctx = await resolveStoreInstance()
   if ('error' in ctx) return NextResponse.json({ error: ctx.error }, { status: ctx.status })
-  let isBusiness = false
-  try {
-    const prof = await fetchOwnBusinessProfile({ instanceName: ctx.instanceName })
-    isBusiness = !!prof.isBusiness
-  } catch {
-    /* profile is best-effort */
-  }
+  const isBusiness = ctx.isBusiness
   let catalog: unknown = null
   try {
     catalog = await fetchCatalog({ instanceName: ctx.instanceName })
   } catch {
-    /* no catalog */
+    /* no catalog (getCatalog throws on an empty catalog) */
   }
-  return NextResponse.json({ isBusiness, catalog })
+  // Collections read separately — reliable even when the catalog is empty.
+  let collections: unknown = null
+  try {
+    collections = await fetchCollections({ instanceName: ctx.instanceName })
+  } catch {
+    /* no collections */
+  }
+  return NextResponse.json({ isBusiness, catalog, collections })
 }
 
 /** POST — create a product. Requires a WhatsApp Business account. */
 export async function POST(request: Request) {
-  const ctx = await resolveInstance()
+  const ctx = await resolveStoreInstance()
   if ('error' in ctx) return NextResponse.json({ error: ctx.error }, { status: ctx.status })
   const body = (await request.json().catch(() => ({}))) as Partial<ProductInput>
   if (!body.name?.trim() || !body.currency?.trim() || typeof body.price !== 'number') {
@@ -79,7 +56,7 @@ export async function POST(request: Request) {
     })
     return NextResponse.json({ product })
   } catch (e) {
-    const m = e instanceof Error ? e.message : 'Failed to create product'
-    return NextResponse.json({ error: m }, { status: 502 })
+    const { error, status } = catalogWriteError(e)
+    return NextResponse.json({ error }, { status })
   }
 }

@@ -147,14 +147,23 @@ export default function StorePage() {
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
         </div>
       ) : products.length === 0 ? (
-        <div className="flex h-56 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/40 text-center">
+        <div className="flex h-64 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/40 p-4 text-center">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
             <StoreIcon className="h-6 w-6 text-primary" />
           </div>
           <p className="mt-3 text-sm font-medium text-foreground">No products yet</p>
-          <p className="mt-1 max-w-xs text-xs text-muted-foreground">
-            Add products to build the catalog customers see in your WhatsApp chat.
-          </p>
+          {isBusiness ? (
+            <p className="mt-1 max-w-sm text-xs text-muted-foreground">
+              Add your <strong>first</strong> product in the WhatsApp Business app
+              (Settings → Business tools → Catalog). WhatsApp only lets apps like
+              this manage a catalog once it&apos;s been started there — after that,
+              add / edit / delete products right here.
+            </p>
+          ) : (
+            <p className="mt-1 max-w-xs text-xs text-muted-foreground">
+              Add products to build the catalog customers see in your WhatsApp chat.
+            </p>
+          )}
         </div>
       ) : (
         <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

@@ -1032,6 +1032,21 @@ export async function fetchCatalog(args: {
   })
 }
 
+/**
+ * Fetch a business's product collections. Unlike getCatalog (which throws
+ * on an empty catalog), this returns cleanly for a Business account with no
+ * collections — so it's a reliable read even before any products exist.
+ */
+export async function fetchCollections(args: {
+  instanceName: string
+  number?: string
+}): Promise<unknown> {
+  return await evolutionFetch(`/business/getCollections/${encodeURIComponent(args.instanceName)}`, {
+    method: 'POST',
+    body: { number: args.number },
+  })
+}
+
 /** Fetch the connected number's OWN business profile (incl. isBusiness). */
 export async function fetchOwnBusinessProfile(args: {
   instanceName: string
