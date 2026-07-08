@@ -32,7 +32,22 @@ import { SkeletonCard } from '@/components/dashboard/skeleton'
 import { QuickActions } from '@/components/dashboard/quick-actions'
 import { ConversationsChart } from '@/components/dashboard/conversations-chart'
 import { PipelineDonut } from '@/components/dashboard/pipeline-donut'
-import { ResponseTimeChart } from '@/components/dashboard/response-time-chart'
+import dynamic from 'next/dynamic'
+// recharts (~100KB gz) only powers this one below-the-fold chart, and the
+// page already shows a skeleton while its data loads client-side — so defer
+// the whole recharts payload off the dashboard's initial bundle.
+const ResponseTimeChart = dynamic(
+  () =>
+    import('@/components/dashboard/response-time-chart').then(
+      (m) => m.ResponseTimeChart,
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-80 animate-pulse rounded-xl border border-border bg-card/50" />
+    ),
+  },
+)
 import { ActivityFeed } from '@/components/dashboard/activity-feed'
 
 type RangeDays = 7 | 30 | 90

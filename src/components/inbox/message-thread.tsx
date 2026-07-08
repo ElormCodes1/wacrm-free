@@ -449,13 +449,35 @@ export function MessageThread({
     }).catch(() => {});
   }, [conversationId, hasUnread]);
 
-  // Auto-scroll to bottom on new messages
+  // Whether the user is parked near the bottom of the thread. Updated from
+  // the scroll handler so it reflects their position *before* a new message
+  // appends — the effect below reads it to decide whether to follow.
+  const nearBottomRef = useRef(true);
+  const handleThreadScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    nearBottomRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+  }, []);
+
+  // Auto-scroll: always jump to the bottom when opening a conversation;
+  // otherwise only follow appended messages when the user is already at the
+  // bottom — never yank them away from history they're reading (a status
+  // tick or reaction must not scroll the thread).
+  const prevConvIdRef = useRef<string | undefined>(undefined);
+  const prevMsgCountRef = useRef(0);
   useEffect(() => {
-    if (scrollRef.current) {
-      const el = scrollRef.current;
+    const el = scrollRef.current;
+    if (!el) return;
+    const convChanged = prevConvIdRef.current !== conversationId;
+    const appended = messages.length > prevMsgCountRef.current;
+    prevConvIdRef.current = conversationId;
+    prevMsgCountRef.current = messages.length;
+    if (convChanged || (appended && nearBottomRef.current)) {
       el.scrollTop = el.scrollHeight;
+      nearBottomRef.current = true;
     }
-  }, [messages]);
+  }, [messages, conversationId]);
 
   const handleSend = useCallback(
     async (text: string, replyToId?: string) => {
@@ -1077,6 +1099,14 @@ export function MessageThread({
     [conversation, onAssignChange],
   );
 
+  // Rebuilt only when the message array changes — not on every unrelated
+  // re-render (presence ticks every 4s, search typing, reaction updates).
+  // Must run before the early return below to satisfy rules-of-hooks.
+  const messageGroups = useMemo(
+    () => groupMessagesByDate(messages),
+    [messages],
+  );
+
   // Empty state — same WhatsApp-style doodle background as the active
   // thread below, so swapping between empty/selected doesn't change the
   // pattern under the user's eye.
@@ -1097,7 +1127,6 @@ export function MessageThread({
   }
 
   const displayName = resolveDisplayName(contact);
-  const messageGroups = groupMessagesByDate(messages);
   const currentStatus = STATUS_OPTIONS.find(
     (s) => s.value === conversation.status
   );
@@ -1139,6 +1168,8 @@ export function MessageThread({
               <img
                 src={contact.avatar_url}
                 alt={displayName}
+                loading="lazy"
+                decoding="async"
                 className="h-full w-full object-cover"
               />
             ) : contact.is_group ? (
@@ -1487,7 +1518,11 @@ export function MessageThread({
       )}
 
       {/* Messages Area */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
+      <div
+        ref={scrollRef}
+        onScroll={handleThreadScroll}
+        className="flex-1 overflow-y-auto px-4 py-4"
+      >
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />

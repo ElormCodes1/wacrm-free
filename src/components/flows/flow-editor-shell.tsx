@@ -25,10 +25,23 @@
  */
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { GitFork, List } from "lucide-react";
 
 import { FlowBuilder } from "./flow-builder";
-import { FlowCanvas } from "./flow-canvas";
+// The canvas pulls in @xyflow/react + @dagrejs/dagre (~80KB gz) and is never
+// shown in list view or on mobile — defer it until the canvas is opened.
+const FlowCanvas = dynamic(
+  () => import("./flow-canvas").then((m) => m.FlowCanvas),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        Loading canvas…
+      </div>
+    ),
+  },
+);
 import { FlowEditorProvider } from "./flow-editor-state";
 import { EditorHeader } from "./header";
 import { ValidationPanel } from "./validation-panel";

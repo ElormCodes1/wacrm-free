@@ -333,23 +333,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [profile?.account_role, profile?.account_id]);
 
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        profile,
-        loading,
-        profileLoading,
-        signOut,
-        refreshProfile,
-        account,
-        defaultCurrency: account?.default_currency ?? DEFAULT_CURRENCY,
-        ...derived,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
+  // Stable context value — without this the object literal is new every
+  // render, re-rendering every useAuth() consumer (composer gating, pipeline
+  // board, presence, number scope, …) even when nothing they read changed.
+  const value = useMemo(
+    () => ({
+      user,
+      profile,
+      loading,
+      profileLoading,
+      signOut,
+      refreshProfile,
+      account,
+      defaultCurrency: account?.default_currency ?? DEFAULT_CURRENCY,
+      ...derived,
+    }),
+    [user, profile, loading, profileLoading, signOut, refreshProfile, account, derived],
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 /**

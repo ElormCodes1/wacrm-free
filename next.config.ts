@@ -69,6 +69,16 @@ const nextConfig: NextConfig = {
   output: "standalone",
 
   /**
+   * Tree-shake barrel imports for heavy packages Next doesn't already
+   * cover by default (lucide-react / date-fns / recharts are in the
+   * built-in list). @xyflow/react is large and only used by the flow
+   * editor, so trimming its import graph helps that route.
+   */
+  experimental: {
+    optimizePackageImports: ["@xyflow/react"],
+  },
+
+  /**
    * Cache-Control policy.
    *
    * Why this exists:

@@ -157,6 +157,8 @@ function MediaImage({ url, alt }: { url: string; alt: string }) {
     <img
       src={src ?? ""}
       alt={alt}
+      loading="lazy"
+      decoding="async"
       className="max-h-64 max-w-60 rounded-lg object-cover"
       onError={() => setError(true)}
     />

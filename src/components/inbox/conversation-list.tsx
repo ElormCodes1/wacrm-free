@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, memo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   CONVERSATION_SELECT,
@@ -570,7 +570,11 @@ interface ConversationItemProps {
   onSelect: (conversation: Conversation) => void;
 }
 
-function ConversationItem({
+// Memoized so a realtime update to one conversation (or an active-row
+// change) re-renders only the affected rows — not the whole list. The
+// inbox updates conversations via `.map` that preserves the object
+// reference for unchanged rows, so the shallow prop compare holds.
+const ConversationItem = memo(function ConversationItem({
   conversation,
   isActive,
   onSelect,
@@ -611,6 +615,8 @@ function ConversationItem({
           <img
             src={contact.avatar_url}
             alt={displayName}
+            loading="lazy"
+            decoding="async"
             className="h-10 w-10 rounded-full object-cover"
           />
         ) : contact?.is_group ? (
@@ -677,4 +683,4 @@ function ConversationItem({
       </div>
     </button>
   );
-}
+});
