@@ -56,14 +56,18 @@ export async function POST(request: Request) {
         .from('conversations')
         .update({ archived_at: action === 'archive' ? now : null, updated_at: now })
         .eq('id', conversation_id)
-      // Best-effort WhatsApp mirror.
+      // Best-effort WhatsApp mirror. We must supply the chat's last message
+      // (Evolution's getLastMessage fallback is broken) or the archive is a
+      // silent no-op on the phone.
       const target = await resolveSendTarget(supabase, accountId, conversation_id)
       if (target) {
         try {
+          const last = await lastMessageKeyFor(supabase, conversation_id, target.remoteJid)
           await archiveChat({
             instanceName: target.instanceName,
             chatJid: target.remoteJid,
             archive: action === 'archive',
+            lastMessageKey: last?.key,
           })
         } catch {
           /* local archive already applied */
@@ -80,7 +84,12 @@ export async function POST(request: Request) {
       const target = await resolveSendTarget(supabase, accountId, conversation_id)
       if (target) {
         try {
-          await markChatUnread({ instanceName: target.instanceName, chatJid: target.remoteJid })
+          const last = await lastMessageKeyFor(supabase, conversation_id, target.remoteJid)
+          await markChatUnread({
+            instanceName: target.instanceName,
+            chatJid: target.remoteJid,
+            lastMessageKey: last?.key,
+          })
         } catch {
           /* local applied */
         }
@@ -158,15 +167,8 @@ export async function POST(request: Request) {
       }
       // Supply the latest message ourselves — Evolution's getLastMessage
       // fallback is broken, so the clear needs a message key + timestamp.
-      const { data: last } = await supabase
-        .from('messages')
-        .select('message_id, sender_type, created_at')
-        .eq('conversation_id', conversation_id)
-        .not('message_id', 'is', null)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      if (!last?.message_id) {
+      const last = await lastMessageKeyFor(supabase, conversation_id, target.remoteJid)
+      if (!last) {
         // Nothing on WhatsApp to clear.
         return NextResponse.json({ success: true })
       }
@@ -174,12 +176,8 @@ export async function POST(request: Request) {
         await clearChat({
           instanceName: target.instanceName,
           chatJid: target.remoteJid,
-          lastMessageKey: {
-            id: last.message_id as string,
-            remoteJid: target.remoteJid,
-            fromMe: last.sender_type === 'agent' || last.sender_type === 'bot',
-          },
-          lastMessageTimestamp: Math.floor(new Date(last.created_at as string).getTime() / 1000),
+          lastMessageKey: last.key,
+          lastMessageTimestamp: last.timestamp,
         })
       } catch (e) {
         const message = e instanceof Error ? e.message : 'Clear failed'
@@ -200,5 +198,41 @@ export async function POST(request: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+type ActionSupabase = Awaited<ReturnType<typeof createClient>>
+
+/**
+ * The conversation's newest WhatsApp message, as a Baileys key + timestamp.
+ * chatModify ops (archive / mark-unread / clear) need this for their range,
+ * and Evolution's own getLastMessage fallback is broken (it filters the JSON
+ * `key` column with a plain object), so we always supply it ourselves.
+ * Returns null when the conversation has no WhatsApp-backed message.
+ */
+async function lastMessageKeyFor(
+  supabase: ActionSupabase,
+  conversationId: string,
+  remoteJid: string,
+): Promise<{
+  key: { id: string; remoteJid: string; fromMe: boolean }
+  timestamp: number
+} | null> {
+  const { data } = await supabase
+    .from('messages')
+    .select('message_id, sender_type, created_at')
+    .eq('conversation_id', conversationId)
+    .not('message_id', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (!data?.message_id) return null
+  return {
+    key: {
+      id: data.message_id as string,
+      remoteJid,
+      fromMe: data.sender_type === 'agent' || data.sender_type === 'bot',
+    },
+    timestamp: Math.floor(new Date(data.created_at as string).getTime() / 1000),
   }
 }
