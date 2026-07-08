@@ -795,6 +795,44 @@ export async function archiveChat(args: {
   )
 }
 
+/**
+ * Clear a chat's messages on the connected number's WhatsApp (chatModify
+ * clear) — declutters the phone without touching the other party's copy or
+ * the CRM record. Socket-safe (chatModify class). Backed by our patched
+ * Evolution `/chat/clearChat`; Evolution resolves the chat's last message
+ * for the range when `lastMessageKey` isn't supplied.
+ */
+export async function clearChat(args: {
+  instanceName: string
+  chatJid: string
+  /** The chat's latest message. Supply it — Evolution's own getLastMessage
+   *  fallback is broken (it filters the JSON `key` column with a plain
+   *  object, which Prisma rejects), so without this the clear 500s. */
+  lastMessageKey?: { id: string; remoteJid: string; fromMe: boolean }
+  /** Unix seconds of that message; helps Evolution compute the clear range. */
+  lastMessageTimestamp?: number
+}): Promise<void> {
+  await evolutionFetch(
+    `/chat/clearChat/${encodeURIComponent(args.instanceName)}`,
+    {
+      method: 'POST',
+      body: {
+        chat: args.chatJid,
+        ...(args.lastMessageKey
+          ? {
+              lastMessage: {
+                key: args.lastMessageKey,
+                ...(args.lastMessageTimestamp
+                  ? { messageTimestamp: args.lastMessageTimestamp }
+                  : {}),
+              },
+            }
+          : {}),
+      },
+    },
+  )
+}
+
 export async function markChatUnread(args: {
   instanceName: string
   chatJid: string

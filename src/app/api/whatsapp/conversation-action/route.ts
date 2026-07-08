@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { archiveChat, markChatUnread, pinChat, muteChat } from '@/lib/whatsapp/provider/evolution'
+import { archiveChat, markChatUnread, pinChat, muteChat, clearChat } from '@/lib/whatsapp/provider/evolution'
 import { resolveSendTarget } from '@/lib/whatsapp/resolve-send-target'
 
 /**
@@ -144,6 +144,46 @@ export async function POST(request: Request) {
         } catch {
           /* local mute already applied */
         }
+      }
+      return NextResponse.json({ success: true })
+    }
+
+    if (action === 'clear') {
+      // Clear the connected phone's WhatsApp copy of this chat (chatModify
+      // clear). The CRM keeps its full record — this only declutters the
+      // phone. No local DB change.
+      const target = await resolveSendTarget(supabase, accountId, conversation_id)
+      if (!target) {
+        return NextResponse.json({ error: 'WhatsApp not connected.' }, { status: 400 })
+      }
+      // Supply the latest message ourselves — Evolution's getLastMessage
+      // fallback is broken, so the clear needs a message key + timestamp.
+      const { data: last } = await supabase
+        .from('messages')
+        .select('message_id, sender_type, created_at')
+        .eq('conversation_id', conversation_id)
+        .not('message_id', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (!last?.message_id) {
+        // Nothing on WhatsApp to clear.
+        return NextResponse.json({ success: true })
+      }
+      try {
+        await clearChat({
+          instanceName: target.instanceName,
+          chatJid: target.remoteJid,
+          lastMessageKey: {
+            id: last.message_id as string,
+            remoteJid: target.remoteJid,
+            fromMe: last.sender_type === 'agent' || last.sender_type === 'bot',
+          },
+          lastMessageTimestamp: Math.floor(new Date(last.created_at as string).getTime() / 1000),
+        })
+      } catch (e) {
+        const message = e instanceof Error ? e.message : 'Clear failed'
+        return NextResponse.json({ error: `WhatsApp clear failed: ${message}` }, { status: 502 })
       }
       return NextResponse.json({ success: true })
     }

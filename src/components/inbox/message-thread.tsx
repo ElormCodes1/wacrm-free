@@ -43,6 +43,7 @@ import {
   ChevronUp,
   X,
   Trash2,
+  Eraser,
   Users,
 } from "lucide-react";
 import { format, isToday, isYesterday } from "date-fns";
@@ -872,6 +873,29 @@ export function MessageThread({
     [matchIds.length],
   );
 
+  // Clear the connected phone's WhatsApp copy of this chat. The CRM keeps
+  // its full history — this only tidies the phone.
+  const handleClearChat = useCallback(async () => {
+    if (!conversation) return;
+    if (
+      !window.confirm(
+        "Clear this chat on your WhatsApp phone? It removes the messages from the connected phone's WhatsApp — your CRM history stays intact.",
+      )
+    )
+      return;
+    const res = await fetch("/api/whatsapp/conversation-action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversation_id: conversation.id, action: "clear" }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      toast.error(data.error ?? "Clear failed");
+      return;
+    }
+    toast.success("Chat cleared on WhatsApp");
+  }, [conversation]);
+
   const handleDeleteChat = useCallback(async () => {
     if (!conversation) return;
     if (
@@ -1363,6 +1387,10 @@ export function MessageThread({
                   Hide chat
                 </DropdownMenuItem>
               )}
+              <DropdownMenuItem onClick={handleClearChat} className="text-sm">
+                <Eraser className="mr-2 h-4 w-4" />
+                Clear chat on phone
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleBlockContact} className="text-sm text-red-500">
                 <Ban className="mr-2 h-4 w-4" />
