@@ -17,6 +17,8 @@ import {
   User as UserIcon,
   MessageSquare,
   Handshake,
+  CheckCircle2,
+  RotateCcw,
 } from "lucide-react";
 import { format, isPast, isToday } from "date-fns";
 import { toast } from "sonner";
@@ -387,6 +389,29 @@ function TaskRow({ task, onToggle, onEdit, onOpenContact }: TaskRowProps) {
             )}
           </div>
         </div>
+
+        {/* Explicit complete / reopen action on the row itself. */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggle(task);
+          }}
+          title={done ? "Mark as not done" : "Mark as done"}
+          className={cn(
+            "flex shrink-0 items-center gap-1 self-center rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors",
+            done
+              ? "border border-border text-muted-foreground hover:bg-muted"
+              : "bg-positive/10 text-positive hover:bg-positive/20",
+          )}
+        >
+          {done ? (
+            <RotateCcw className="h-3.5 w-3.5" />
+          ) : (
+            <CheckCircle2 className="h-3.5 w-3.5" />
+          )}
+          <span className="hidden sm:inline">{done ? "Reopen" : "Done"}</span>
+        </button>
       </div>
     </li>
   );
