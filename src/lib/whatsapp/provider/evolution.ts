@@ -856,6 +856,85 @@ export async function deleteNewsletter(args: {
 }
 
 // ============================================================
+// Store / catalog (WhatsApp Business)
+// ============================================================
+
+export interface StoreProduct {
+  id?: string
+  name?: string
+  description?: string
+  price?: number
+  currency?: string
+  isHidden?: boolean
+  retailerId?: string
+  url?: string
+  imageUrls?: string[]
+}
+
+export async function fetchCatalog(args: {
+  instanceName: string
+  number?: string
+}): Promise<unknown> {
+  return await evolutionFetch(`/business/getCatalog/${encodeURIComponent(args.instanceName)}`, {
+    method: 'POST',
+    body: { number: args.number },
+  })
+}
+
+/** Fetch the connected number's OWN business profile (incl. isBusiness). */
+export async function fetchOwnBusinessProfile(args: {
+  instanceName: string
+  number?: string
+}): Promise<{ isBusiness?: boolean } & Record<string, unknown>> {
+  return await evolutionFetch(`/business/profile/${encodeURIComponent(args.instanceName)}`, {
+    method: 'POST',
+    body: { number: args.number },
+  })
+}
+
+export interface ProductInput {
+  name: string
+  price: number
+  currency: string
+  description?: string
+  retailerId?: string
+  url?: string
+  isHidden?: boolean
+  images: string[]
+}
+
+export async function createProduct(args: {
+  instanceName: string
+  product: ProductInput
+}): Promise<unknown> {
+  return await evolutionFetch(`/business/createProduct/${encodeURIComponent(args.instanceName)}`, {
+    method: 'POST',
+    body: args.product,
+  })
+}
+
+export async function updateProduct(args: {
+  instanceName: string
+  productId: string
+  product: ProductInput
+}): Promise<unknown> {
+  return await evolutionFetch(`/business/updateProduct/${encodeURIComponent(args.instanceName)}`, {
+    method: 'POST',
+    body: { productId: args.productId, ...args.product },
+  })
+}
+
+export async function deleteProduct(args: {
+  instanceName: string
+  productIds: string[]
+}): Promise<unknown> {
+  return await evolutionFetch(`/business/deleteProduct/${encodeURIComponent(args.instanceName)}`, {
+    method: 'POST',
+    body: { productIds: args.productIds },
+  })
+}
+
+// ============================================================
 // Communities
 // ============================================================
 
