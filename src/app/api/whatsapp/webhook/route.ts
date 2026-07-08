@@ -162,8 +162,12 @@ async function processEvolutionEvent(body: EvolutionWebhookBody) {
       await handleContactsUpdate(instance, body.data)
       break
 
+    case 'presence.update':
+      await handlePresenceUpdate(instance, body.data)
+      break
+
     // qrcode.updated, contacts.upsert, send.message (our own echoes),
-    // presence.update, etc. — intentionally ignored here.
+    // etc. — intentionally ignored here.
     default:
       break
   }
@@ -215,6 +219,71 @@ async function handleContactsUpdate(instanceName: string, data: unknown) {
         .or(`name.is.null,name.eq.${phone}`)
     }
   }
+}
+
+// ============================================================
+// Contact presence (online / typing… / last seen)
+//
+// Baileys' `presence.update` = { id, presences: { [jid]: PresenceData } }
+// where PresenceData = { lastKnownPresence, lastSeen? }. Evolution
+// auto-subscribes to a contact's presence when they message us and
+// forwards this event — so this is a pure WIRE. We upsert one row per
+// contact into contact_presence; the inbox renders it via Realtime.
+// We never CREATE a contact from presence (only update presence for
+// contacts we already know) and skip groups.
+// ============================================================
+
+type BaileysPresence = 'available' | 'unavailable' | 'composing' | 'recording' | 'paused'
+const PRESENCE_STATES = new Set<BaileysPresence>([
+  'available',
+  'unavailable',
+  'composing',
+  'recording',
+  'paused',
+])
+
+async function handlePresenceUpdate(instanceName: string, data: unknown) {
+  const payload = (data ?? {}) as {
+    id?: string
+    presences?: Record<string, { lastKnownPresence?: string; lastSeen?: number }>
+  }
+  const jid = payload.id ?? ''
+  if (!jid || jid.endsWith('@g.us') || jid === 'status@broadcast') return
+  if (!payload.presences) return
+
+  const phone = normalizePhone(jidToPhone(jid))
+  if (!phone) return
+
+  // The presences map is keyed by participant JID; for a 1:1 chat it's the
+  // contact themselves. Take the entry matching `id`, else the first.
+  const entry = payload.presences[jid] ?? Object.values(payload.presences)[0]
+  const state = entry?.lastKnownPresence as BaileysPresence | undefined
+  if (!state || !PRESENCE_STATES.has(state)) return
+
+  const config = await resolveConfig(instanceName)
+  if (!config) return
+  const db = supabaseAdmin()
+
+  const existing = await findExistingContact(db, config.account_id, phone)
+  if (!existing) return
+
+  const lastSeen =
+    typeof entry?.lastSeen === 'number' && entry.lastSeen > 0
+      ? new Date(entry.lastSeen * 1000).toISOString()
+      : null
+
+  // Upsert one row per contact. Only overwrite last_seen when this event
+  // carried a fresh value — a `composing` ping usually has none and
+  // shouldn't blank a previously reported last-seen.
+  const row: Record<string, unknown> = {
+    contact_id: existing.id,
+    account_id: config.account_id,
+    state,
+    updated_at: new Date().toISOString(),
+  }
+  if (lastSeen) row.last_seen = lastSeen
+
+  await db.from('contact_presence').upsert(row, { onConflict: 'contact_id' })
 }
 
 // ============================================================

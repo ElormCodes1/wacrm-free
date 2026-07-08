@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { usePresence } from "@/hooks/use-presence";
+import { useContactPresence } from "@/hooks/use-contact-presence";
 import { PresenceDot } from "@/components/presence/presence-dot";
 import { presenceLabel } from "@/lib/presence";
 import { cn } from "@/lib/utils";
@@ -183,6 +184,9 @@ export function MessageThread({
 }: MessageThreadProps) {
   const { user } = useAuth();
   const { getPresence, getRow, now } = usePresence();
+  // Live WhatsApp presence for the person on the other end (typing…/
+  // online/last seen), distinct from the CRM-teammate presence above.
+  const contactPresence = useContactPresence(contact?.id, contact?.is_group);
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
@@ -1077,9 +1081,22 @@ export function MessageThread({
           <div className="min-w-0">
             <h2 className="truncate text-sm font-semibold text-foreground">{displayName}</h2>
             <div className="flex items-center gap-1.5">
-              <p className="truncate text-xs text-muted-foreground">
-                {contact.is_group ? "Group" : contact.phone}
-              </p>
+              {contactPresence ? (
+                <p
+                  className={cn(
+                    "truncate text-xs",
+                    contactPresence.kind === "typing"
+                      ? "text-positive"
+                      : "text-muted-foreground",
+                  )}
+                >
+                  {contactPresence.label}
+                </p>
+              ) : (
+                <p className="truncate text-xs text-muted-foreground">
+                  {contact.is_group ? "Group" : contact.phone}
+                </p>
+              )}
               {conversation.whatsapp_config?.label && (
                 <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
                   via {conversation.whatsapp_config.label}
