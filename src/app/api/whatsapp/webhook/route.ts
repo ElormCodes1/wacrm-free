@@ -141,6 +141,17 @@ async function processEvolutionEvent(body: EvolutionWebhookBody) {
     case 'messages.update':
     case 'send.message.update':
       for (const upd of asArray(body.data)) {
+        // A status revoke (poster deleted their status) — mirror WhatsApp
+        // and remove it from our feed instead of treating it as an ack.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const u = upd as any
+        if (
+          u?.remoteJid === 'status@broadcast' &&
+          String(u?.status).toUpperCase() === 'DELETED'
+        ) {
+          await handleStatusRevoke(instance, u)
+          continue
+        }
         await handleAck(upd)
       }
       break
@@ -759,6 +770,39 @@ async function handleStatusBroadcast(instanceName: string, data: any) {
       { onConflict: 'account_id,message_id', ignoreDuplicates: true },
     )
   if (error) console.error('[webhook] status insert failed:', error.message)
+}
+
+// ============================================================
+// Status revokes (messages.update with status DELETED)
+//
+// When a poster deletes their status, WhatsApp removes it from every
+// viewer — mirror that by dropping the status (and its recorded viewers)
+// from our feed. Also fires when OUR own status is deleted from the
+// phone, keeping "My status" in sync.
+// ============================================================
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function handleStatusRevoke(instanceName: string, upd: any) {
+  const messageId: string | undefined = upd?.keyId || upd?.key?.id
+  if (!messageId) return
+  const config = await resolveConfig(instanceName)
+  if (!config) return
+
+  const db = supabaseAdmin()
+  const { data: status } = await db
+    .from('status_updates')
+    .select('id')
+    .eq('account_id', config.account_id)
+    .eq('message_id', messageId)
+    .maybeSingle()
+  if (!status) return
+
+  await db
+    .from('status_views')
+    .delete()
+    .eq('account_id', config.account_id)
+    .eq('message_id', messageId)
+  await db.from('status_updates').delete().eq('id', status.id)
 }
 
 // ============================================================
