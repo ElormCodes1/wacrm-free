@@ -53,6 +53,7 @@ export function StatusView() {
   const [feed, setFeed] = useState<StatusFeed | null>(null);
   const [loading, setLoading] = useState(true);
   const [viewer, setViewer] = useState<{ groups: ViewerGroup[]; index: number } | null>(null);
+  const [composerOpen, setComposerOpen] = useState(false);
   const postedIds = useRef<Set<string>>(new Set());
 
   const { configId } = useNumberScope();
@@ -149,9 +150,12 @@ export function StatusView() {
         <div className="flex items-center gap-4">
           <button
             type="button"
-            onClick={() => mineGroup && setViewer({ groups: [mineGroup], index: 0 })}
-            disabled={!mineGroup}
-            className="flex items-center gap-3 text-left disabled:cursor-default"
+            onClick={() =>
+              mineGroup
+                ? setViewer({ groups: [mineGroup], index: 0 })
+                : setComposerOpen(true)
+            }
+            className="flex items-center gap-3 text-left"
           >
             <RingAvatar name="Me" avatarUrl={null} unseen={false} />
             <div>
@@ -164,7 +168,11 @@ export function StatusView() {
             </div>
           </button>
           <div className="ml-auto">
-            <StatusComposer onPosted={load} />
+            <StatusComposer
+              onPosted={load}
+              open={composerOpen}
+              onOpenChange={setComposerOpen}
+            />
           </div>
         </div>
       </section>

@@ -64,8 +64,22 @@ function numberLabel(n: WaNumber): string {
  * video, or a voice note (recorded or uploaded), from a chosen connected
  * number. Calls onPosted().
  */
-export function StatusComposer({ onPosted }: { onPosted?: () => void }) {
-  const [open, setOpen] = useState(false);
+export function StatusComposer({
+  onPosted,
+  open: openProp,
+  onOpenChange,
+  showTrigger = true,
+}: {
+  onPosted?: () => void;
+  /** Optional controlled open state (e.g. opened from the "My status" tile). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Hide the built-in "New status" button when the parent opens the composer. */
+  showTrigger?: boolean;
+}) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = openProp ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
   const [tab, setTab] = useState<Tab>("text");
   const [text, setText] = useState("");
   const [bg, setBg] = useState(BG_COLORS[0]);
@@ -281,10 +295,12 @@ export function StatusComposer({ onPosted }: { onPosted?: () => void }) {
 
   return (
     <>
-      <Button onClick={() => setOpen(true)}>
-        <Plus className="h-4 w-4" />
-        New status
-      </Button>
+      {showTrigger && (
+        <Button onClick={() => setOpen(true)}>
+          <Plus className="h-4 w-4" />
+          New status
+        </Button>
+      )}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
