@@ -3,7 +3,7 @@ import Script from "next/script";
 import "./globals.css";
 import { ThemeProvider } from "@/hooks/use-theme";
 import { ThemedToaster } from "@/components/themed-toaster";
-import { DEFAULT_MODE, MODE_STORAGE_KEY, MODES } from "@/lib/themes";
+import { DEFAULT_MODE, MODE_STORAGE_KEY } from "@/lib/themes";
 
 export const metadata: Metadata = {
   title: {
@@ -30,26 +30,26 @@ export const viewport: Viewport = {
   colorScheme: "dark light",
 };
 
-// Inline boot script — runs before React hydrates so the user's
-// chosen mode (data-mode) is on the <html> element before first
-// paint. Without this every page load flashes the server-rendered
-// default for a frame before the React tree mounts and applies the
-// picked value.
+// Inline boot script — runs before React hydrates so the resolved mode
+// (data-mode) is on the <html> element before first paint. Without this
+// every page load flashes a default for a frame before React mounts.
 //
-// Kept dependency-free (no imports, no JSX) — must be a string the
-// browser can run as a single <script>. Knowledge of valid ids is
-// sourced from the MODES constant so adding one doesn't silently
-// break the boot path. (The WhatsApp teal accent is fixed in CSS, so
-// there's no accent axis to replay here.)
+// It reads the stored PREFERENCE ("system" | "light" | "dark"); an
+// explicit light/dark is used as-is, while "system" (or a missing value)
+// resolves against the OS via prefers-color-scheme. Kept dependency-free
+// (no imports, no JSX) so the browser can run it as a single <script>.
 const THEME_BOOT_SCRIPT = `
 (function(){
   var d = document.documentElement;
   try {
-    var MODE_KEY = ${JSON.stringify(MODE_STORAGE_KEY)};
-    var MODE_DEFAULT = ${JSON.stringify(DEFAULT_MODE)};
-    var MODES = ${JSON.stringify(MODES)};
-    var savedMode = localStorage.getItem(MODE_KEY);
-    d.dataset.mode = MODES.indexOf(savedMode) !== -1 ? savedMode : MODE_DEFAULT;
+    var pref = localStorage.getItem(${JSON.stringify(MODE_STORAGE_KEY)});
+    var mode;
+    if (pref === "light" || pref === "dark") {
+      mode = pref;
+    } else {
+      mode = (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+    }
+    d.dataset.mode = mode;
   } catch (_e) {
     d.dataset.mode = ${JSON.stringify(DEFAULT_MODE)};
   }
@@ -64,14 +64,15 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      data-mode={DEFAULT_MODE}
       className="h-full antialiased"
-      // The `theme-boot` script below rewrites `data-mode` on <html>
-      // from localStorage before React hydrates, so for any non-default
-      // choice the client DOM intentionally differs from the
-      // server-rendered default. suppressHydrationWarning silences the
-      // expected mismatch — it only applies to this element's own
-      // attributes, so genuine mismatches in children still surface.
+      // `data-mode` is intentionally NOT set here as a JSX prop: the
+      // `theme-boot` script sets it before hydration and the
+      // ThemeProvider owns it thereafter. Rendering it as a literal prop
+      // would make React reconcile it back to that literal on client
+      // navigations — the "theme reverts to dark on navigate" bug.
+      // suppressHydrationWarning silences the expected server/client
+      // difference on this element's own attributes; genuine mismatches
+      // in children still surface.
       suppressHydrationWarning
     >
       <head>
