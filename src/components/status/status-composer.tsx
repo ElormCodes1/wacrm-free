@@ -313,7 +313,12 @@ export function StatusComposer({
               <Label>Post from</Label>
               <Select value={configId} onValueChange={(v) => setConfigId(v ?? "")}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select a number" />
+                  <SelectValue placeholder="Select a number">
+                    {(value) => {
+                      const n = openNumbers.find((x) => x.id === value);
+                      return n ? numberLabel(n) : "Select a number";
+                    }}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {openNumbers.map((n) => (
