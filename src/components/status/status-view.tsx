@@ -108,7 +108,15 @@ export function StatusView() {
       prev ? { ...prev, mine: prev.mine.filter((s) => s.id !== id) } : prev,
     );
     setViewer(null);
-    toast.success("Status deleted");
+    // Be honest: WhatsApp doesn't reliably let a linked device revoke a
+    // status for everyone (a known limitation on LID-migrated numbers), so
+    // it may linger for contacts. Deleting it in the phone's WhatsApp app is
+    // the guaranteed way.
+    toast.success("Removed from your CRM", {
+      description:
+        "It may still show for contacts — delete it in WhatsApp on your phone to remove it for everyone.",
+      duration: 7000,
+    });
   }, []);
 
   const contactGroups: ViewerGroup[] = useMemo(
