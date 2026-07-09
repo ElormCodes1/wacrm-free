@@ -39,6 +39,7 @@ export const CURRENCIES: CurrencyOption[] = [
   { code: "CNY", label: "Chinese Yuan", symbol: "¥" },
   { code: "AED", label: "UAE Dirham", symbol: "د.إ" },
   { code: "ZAR", label: "South African Rand", symbol: "R" },
+  { code: "GHS", label: "Ghanaian Cedi", symbol: "GH₵" },
   { code: "NGN", label: "Nigerian Naira", symbol: "₦" },
   { code: "SGD", label: "Singapore Dollar", symbol: "S$" },
   { code: "MXN", label: "Mexican Peso", symbol: "$" },
