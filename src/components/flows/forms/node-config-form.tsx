@@ -622,7 +622,17 @@ function ConditionForm({
             }
           >
             <SelectTrigger className="bg-muted">
-              <SelectValue />
+              <SelectValue>
+                {(v) =>
+                  v === "var"
+                    ? "Captured variable"
+                    : v === "tag"
+                      ? "Contact has tag"
+                      : v === "contact_field"
+                        ? "Contact field"
+                        : String(v)
+                }
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="var">Captured variable</SelectItem>
@@ -645,7 +655,9 @@ function ConditionForm({
               onValueChange={(v) => onUpdateConfig({ subject_key: v })}
             >
               <SelectTrigger className="bg-muted">
-                <SelectValue placeholder="Pick a tag…" />
+                <SelectValue placeholder="Pick a tag…">
+                  {(v) => tags.find((t) => t.id === v)?.name ?? "Pick a tag…"}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {tags.map((t) => (
@@ -698,7 +710,15 @@ function ConditionForm({
             }
           >
             <SelectTrigger className="bg-muted">
-              <SelectValue />
+              <SelectValue>
+                {(v) =>
+                  v === "present"
+                    ? "is present"
+                    : v === "absent"
+                      ? "is absent"
+                      : String(v)
+                }
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="present">is present</SelectItem>
@@ -775,7 +795,9 @@ function SetTagForm({
             }
           >
             <SelectTrigger className="bg-muted">
-              <SelectValue />
+              <SelectValue>
+                {(v) => (v === "remove" ? "Remove tag" : "Add tag")}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="add">Add tag</SelectItem>
@@ -791,7 +813,9 @@ function SetTagForm({
               onValueChange={(v) => onUpdateConfig({ tag_id: v })}
             >
               <SelectTrigger className="bg-muted">
-                <SelectValue placeholder="Pick a tag…" />
+                <SelectValue placeholder="Pick a tag…">
+                  {(v) => tags.find((t) => t.id === v)?.name ?? "Pick a tag…"}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {tags.map((t) => (

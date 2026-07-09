@@ -329,7 +329,17 @@ export function Step3Personalize({
                       }
                     >
                       <SelectTrigger className="w-full border-border bg-muted text-foreground">
-                        <SelectValue />
+                        <SelectValue>
+                          {(v) =>
+                            v === 'static'
+                              ? 'Static Value'
+                              : v === 'field'
+                                ? 'Contact Field'
+                                : v === 'custom_field'
+                                  ? 'Custom Field'
+                                  : String(v)
+                          }
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent className="border-border bg-popover">
                         <SelectItem value="static">Static Value</SelectItem>
@@ -362,7 +372,12 @@ export function Step3Personalize({
                         }
                       >
                         <SelectTrigger className="w-full border-border bg-muted text-foreground">
-                          <SelectValue placeholder="Select field..." />
+                          <SelectValue placeholder="Select field...">
+                            {(v) =>
+                              contactFields.find((f) => f.value === v)?.label ??
+                              'Select field...'
+                            }
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent className="border-border bg-popover">
                           {contactFields.map((field) => (
@@ -388,7 +403,12 @@ export function Step3Personalize({
                                   ? 'No custom fields'
                                   : 'Select custom field…'
                             }
-                          />
+                          >
+                            {(v) =>
+                              customFields.find((f) => f.id === v)?.field_name ??
+                              ''
+                            }
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent className="border-border bg-popover">
                           {customFields.map((f) => (
