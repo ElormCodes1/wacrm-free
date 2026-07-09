@@ -108,14 +108,14 @@ export function StatusView() {
       prev ? { ...prev, mine: prev.mine.filter((s) => s.id !== id) } : prev,
     );
     setViewer(null);
-    // Be honest: WhatsApp gives a linked device no way to revoke a status
-    // for contacts (confirmed: revokes are ignored regardless of addressing,
-    // and CRM-posted statuses don't sync to the phone's "My status" either,
-    // so a phone-side delete isn't available). The only guarantee is
-    // WhatsApp's own 24-hour expiry.
+    // Honest guidance: a linked device's revoke isn't reliably applied by
+    // contacts' apps, BUT CRM-posted statuses now sync to the phone's
+    // "My status" (own-JID audience), and deleting there works natively —
+    // and even syncs the removal back to the CRM. Worst case, WhatsApp
+    // expires every status within 24 hours.
     toast.success("Removed from your CRM", {
       description:
-        "Contacts may still see it — WhatsApp statuses can't be deleted early from a linked device. It disappears on its own within 24 hours of posting.",
+        "To make sure contacts stop seeing it, delete it from My Status in WhatsApp on your phone — otherwise it expires on its own within 24 hours.",
       duration: 8000,
     });
   }, []);
