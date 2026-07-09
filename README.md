@@ -89,11 +89,22 @@ cp .env.local.example .env
 docker compose up -d --build
 ```
 
+This builds the app and **pulls the WhatsApp gateway as a prebuilt image**
+(`ghcr.io/elormcodes1/evolution-api` — our patched Evolution API fork), so
+you don't need to clone or build the gateway yourself.
+
 - App → <http://localhost:3000>
 - WhatsApp gateway → <http://localhost:8088> (bound to localhost)
 
 Then **[apply the database schema](#database-schema)** and
 **[connect a number](#connect-a-whatsapp-number)** below.
+
+> **Want to modify the gateway?** Clone the fork as a sibling and build it
+> locally instead of pulling:
+> ```bash
+> git clone https://github.com/ElormCodes1/evolution-api.git ../evolution-api
+> docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+> ```
 
 > `ENCRYPTION_KEY` must be 64 hex chars (32 bytes). Generate one:
 > `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
@@ -198,6 +209,14 @@ wacrm-free runs anywhere Node.js or Docker does.
 
 See [`.env.local.example`](./.env.local.example) for every variable and
 [`docs/`](./docs) for feature-specific setup.
+
+> **Maintainers — publishing the gateway image.** The Evolution API fork
+> ([ElormCodes1/evolution-api](https://github.com/ElormCodes1/evolution-api))
+> ships a GitHub Actions workflow that builds and pushes
+> `ghcr.io/elormcodes1/evolution-api:latest` on every push to `main`. After
+> the first run, set the GHCR package to **public** (repo → Packages →
+> the package → Package settings → Change visibility) so `docker compose`
+> can pull it without a login. That's the only manual step.
 
 ---
 

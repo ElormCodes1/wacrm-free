@@ -12,7 +12,9 @@
 services:
   evolution-api:
     container_name: wacrm_evolution_api
-    image: evoapicloud/evolution-api:latest
+    # Our patched fork (Status posting/revoke, channel posts, receipt
+    # forwarding, …) — NOT the vanilla upstream image, which lacks them.
+    image: ghcr.io/elormcodes1/evolution-api:latest
     restart: unless-stopped
     depends_on:
       - evolution-redis

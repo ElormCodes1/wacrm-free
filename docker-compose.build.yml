@@ -1,0 +1,16 @@
+# Optional override for developing the Evolution API fork locally.
+#
+# By default docker-compose.yml PULLS the prebuilt gateway image from GHCR.
+# This override BUILDS it instead, from a sibling ../evolution-api checkout —
+# use it when you're editing the fork's source and want your changes in the
+# running container.
+#
+#   git clone https://github.com/ElormCodes1/evolution-api.git ../evolution-api
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+#
+services:
+  evolution-api:
+    build:
+      context: ../evolution-api
+      dockerfile: Dockerfile
+    image: ghcr.io/elormcodes1/evolution-api:latest

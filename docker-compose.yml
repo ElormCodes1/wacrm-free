@@ -47,16 +47,16 @@ services:
       - wacrm-net
 
   evolution-api:
-    # Built from our own Evolution source checkout (../evolution-api, pinned
-    # to 2.3.7) so every patch is a normal, code-level TypeScript edit rather
-    # than post-build surgery on the minified bundle. Patches live in that
-    # repo's src/ and include: forwarding message-receipt.update (status-view
-    # "seen by", incl. the viewer's jid) and pin/mute/star chat endpoints.
-    # Rebuild after editing the source: docker compose up -d --build evolution-api
-    build:
-      context: ../evolution-api
-      dockerfile: Dockerfile
-    image: wacrm-evolution-api:patched
+    # Prebuilt, patched Evolution API (our fork, pinned to 2.3.7) published to
+    # GHCR by the fork's CI. End users just pull it — no need to clone the
+    # fork. The patches are normal code-level TypeScript edits and include:
+    # WhatsApp Status posting/fanout + revoke sync, channel/newsletter posts,
+    # message-receipt.update forwarding (status "seen by"), and pin/mute/star.
+    #
+    # Hacking on the gateway? Clone the fork as a sibling ../evolution-api and
+    # build locally instead of pulling:
+    #   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+    image: ghcr.io/elormcodes1/evolution-api:latest
     container_name: wacrm_evolution_api
     restart: unless-stopped
     depends_on:
