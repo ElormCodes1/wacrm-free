@@ -29,8 +29,8 @@ export function ModeToggle({ className }: { className?: string }) {
         className,
       )}
     >
-      <Moon className="mode-icon-dark h-5 w-5" />
-      <Sun className="mode-icon-light h-5 w-5" />
+      <Moon className="only-dark h-5 w-5" />
+      <Sun className="only-light h-5 w-5" />
     </button>
   );
 }

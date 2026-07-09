@@ -5,7 +5,6 @@ import { ChevronRight, Loader2 } from 'lucide-react';
 
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
-import { useTheme } from '@/hooks/use-theme';
 import { CURRENCIES } from '@/lib/currency';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card } from '@/components/ui/card';
@@ -36,7 +35,6 @@ export function SettingsOverview({
 }) {
   const { user, profile, accountId, accountRole, defaultCurrency, canManageMembers } =
     useAuth();
-  const { mode } = useTheme();
 
   const [counts, setCounts] = useState<OverviewCounts | null>(null);
   const [countsLoading, setCountsLoading] = useState(true);
@@ -145,7 +143,6 @@ export function SettingsOverview({
 
   const currencyLabel =
     CURRENCIES.find((c) => c.code === defaultCurrency)?.label ?? defaultCurrency;
-  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
   // Per-tile loading + subtitle. `null` counts render as a graceful
   // fallback so a single failed query never blanks a tile.
@@ -213,7 +210,13 @@ export function SettingsOverview({
     {
       section: 'appearance',
       loading: false,
-      subtitle: `${cap(mode)} mode · WhatsApp theme`,
+      subtitle: (
+        <>
+          {/* CSS-driven so it doesn't flash from the SSR-unknown JS mode */}
+          <span className="only-light">Light</span>
+          <span className="only-dark">Dark</span> mode · WhatsApp theme
+        </>
+      ),
     },
   ];
 

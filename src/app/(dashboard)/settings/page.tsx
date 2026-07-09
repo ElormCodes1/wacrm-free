@@ -4,7 +4,6 @@ import { useMemo, type ReactNode } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 import { useAuth } from '@/hooks/use-auth';
-import { useTheme } from '@/hooks/use-theme';
 import { SettingsRail } from '@/components/settings/settings-rail';
 import { SettingsOverview } from '@/components/settings/settings-overview';
 import { ProfileForm } from '@/components/settings/profile-form';
@@ -25,7 +24,6 @@ export default function SettingsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { defaultCurrency } = useAuth();
-  const { mode } = useTheme();
 
   // The URL (`?tab=`) is the single source of truth for the active
   // section — deep-linkable, and it keeps the existing links in the
@@ -44,10 +42,16 @@ export default function SettingsPage() {
   // already in context.
   const hints: Partial<Record<SettingsSection, ReactNode>> = useMemo(
     () => ({
-      appearance: mode.charAt(0).toUpperCase() + mode.slice(1),
+      appearance: (
+        // CSS-driven so it doesn't flash from the SSR-unknown JS mode.
+        <>
+          <span className="only-light">Light</span>
+          <span className="only-dark">Dark</span>
+        </>
+      ),
       deals: defaultCurrency,
     }),
-    [mode, defaultCurrency],
+    [defaultCurrency],
   );
 
   const panel: Record<SettingsSection, ReactNode> = {

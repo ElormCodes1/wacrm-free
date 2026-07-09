@@ -180,13 +180,14 @@ html[data-mode="light"] {
   --chat-wallpaper: oklch(0.939 0.012 79.8); /* #EFEAE2 beige */
 }
 
-/* ---- Mode-toggle icons ----
- * Both icons are rendered; show only the one matching data-mode (set
- * before first paint by the boot script). Keeps the header toggle
- * flash-free on reload — no dependence on the JS mode value, which is
- * unknown during SSR. */
-html[data-mode="light"] .mode-icon-dark,
-html[data-mode="dark"] .mode-icon-light {
+/* ---- Mode-conditional visibility ----
+ * Render both variants and show only the one matching data-mode (set
+ * before first paint by the boot script). Used for the header toggle
+ * icons and any label that names the current mode — keeps them
+ * flash-free on reload with no dependence on the JS mode value, which
+ * is unknown during SSR. */
+html[data-mode="light"] .only-dark,
+html[data-mode="dark"] .only-light {
   display: none;
 }
 
