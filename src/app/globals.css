@@ -180,6 +180,16 @@ html[data-mode="light"] {
   --chat-wallpaper: oklch(0.939 0.012 79.8); /* #EFEAE2 beige */
 }
 
+/* ---- Mode-toggle icons ----
+ * Both icons are rendered; show only the one matching data-mode (set
+ * before first paint by the boot script). Keeps the header toggle
+ * flash-free on reload — no dependence on the JS mode value, which is
+ * unknown during SSR. */
+html[data-mode="light"] .mode-icon-dark,
+html[data-mode="dark"] .mode-icon-light {
+  display: none;
+}
+
 /* ---- ACCENT: WhatsApp teal (single canonical accent) ---- */
 
 :root,
