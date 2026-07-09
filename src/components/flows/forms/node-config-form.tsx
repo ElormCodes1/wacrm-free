@@ -969,7 +969,17 @@ function SendMediaForm({
           }}
         >
           <SelectTrigger className="bg-muted">
-            <SelectValue />
+            <SelectValue>
+              {(v) =>
+                v === "image"
+                  ? "Image (PNG, JPEG, WebP)"
+                  : v === "video"
+                    ? "Video (MP4, 3GP)"
+                    : v === "document"
+                      ? "Document (PDF, Word, Excel, PowerPoint, TXT)"
+                      : String(v)
+              }
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="image">Image (PNG, JPEG, WebP)</SelectItem>
