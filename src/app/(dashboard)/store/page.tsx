@@ -11,7 +11,6 @@ import {
   EyeOff,
   Eye,
   Share2,
-  Send,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,7 +23,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { toast } from "sonner";
-import { SendProductDialog } from "@/components/store/send-product-dialog";
+import { ShareProductDialog } from "@/components/store/share-product-dialog";
 
 interface Product {
   id: string;
@@ -83,8 +82,8 @@ export default function StorePage() {
   const [isBusiness, setIsBusiness] = useState<boolean | null>(null);
   const [formFor, setFormFor] = useState<Product | "new" | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  // Product whose "send to contacts" picker is open.
-  const [sendFor, setSendFor] = useState<Product | null>(null);
+  // Product whose share popup (status / send-to-contacts) is open.
+  const [shareFor, setShareFor] = useState<Product | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -143,24 +142,6 @@ export default function StorePage() {
       }
       setProducts((prev) => prev?.map((x) => (x.id === p.id ? { ...x, isHidden: next } : x)) ?? prev);
       toast.success(next ? "Product hidden from your catalog" : "Product is visible again");
-    } finally {
-      setBusyId(null);
-    }
-  }, []);
-
-  // Post the product to the Business number's WhatsApp Status (Stories).
-  const shareToStatus = useCallback(async (p: Product) => {
-    setBusyId(p.id);
-    try {
-      const res = await fetch(`/api/whatsapp/store/${encodeURIComponent(p.id)}/share-status`, {
-        method: "POST",
-      });
-      const d = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error(d.error ?? "Couldn't share to status");
-        return;
-      }
-      toast.success("Shared to your WhatsApp status");
     } finally {
       setBusyId(null);
     }
@@ -256,23 +237,10 @@ export default function StorePage() {
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={busyId === p.id}
-                    title="Share to WhatsApp status"
-                    onClick={() => shareToStatus(p)}
+                    title="Share — to status or contacts"
+                    onClick={() => setShareFor(p)}
                   >
-                    {busyId === p.id ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Share2 className="h-3.5 w-3.5" />
-                    )}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    title="Send to contacts"
-                    onClick={() => setSendFor(p)}
-                  >
-                    <Send className="h-3.5 w-3.5" />
+                    <Share2 className="h-3.5 w-3.5" />
                   </Button>
                   <Button
                     size="sm"
@@ -295,12 +263,12 @@ export default function StorePage() {
 
       <ProductSheet target={formFor} onClose={() => setFormFor(null)} onSaved={load} />
 
-      {sendFor && (
-        <SendProductDialog
-          productId={sendFor.id}
-          productName={sendFor.name}
-          open={!!sendFor}
-          onOpenChange={(o) => !o && setSendFor(null)}
+      {shareFor && (
+        <ShareProductDialog
+          productId={shareFor.id}
+          productName={shareFor.name}
+          open={!!shareFor}
+          onOpenChange={(o) => !o && setShareFor(null)}
         />
       )}
     </div>

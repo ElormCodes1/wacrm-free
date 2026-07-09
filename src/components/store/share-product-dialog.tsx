@@ -12,7 +12,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Search, Send } from "lucide-react";
+import { Loader2, Search, Send, Share2 } from "lucide-react";
 import { toast } from "sonner";
 
 interface ContactRow {
@@ -22,12 +22,12 @@ interface ContactRow {
 }
 
 /**
- * Pick contacts and send them a catalog product as a native WhatsApp
- * product card (from the Business number). Each send lands in that
- * contact's inbox thread (find-or-create), so it's a light-touch share —
- * larger reach belongs in Broadcasts (hence the server-side cap).
+ * Share popup for a catalog product: post it to the Business number's
+ * WhatsApp Status, or pick contacts to send it to as a native product card
+ * (each lands in that contact's inbox thread — find-or-create). Larger
+ * reach belongs in Broadcasts (hence the server-side cap).
  */
-export function SendProductDialog({
+export function ShareProductDialog({
   productId,
   productName,
   open,
@@ -43,6 +43,7 @@ export function SendProductDialog({
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sending, setSending] = useState(false);
+  const [sharingStatus, setSharingStatus] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -79,7 +80,26 @@ export function SendProductDialog({
     });
   }
 
-  async function send() {
+  async function shareToStatus() {
+    setSharingStatus(true);
+    try {
+      const res = await fetch(
+        `/api/whatsapp/store/${encodeURIComponent(productId)}/share-status`,
+        { method: "POST" },
+      );
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(d.error ?? "Couldn't share to status");
+        return;
+      }
+      toast.success("Shared to your WhatsApp status");
+      onOpenChange(false);
+    } finally {
+      setSharingStatus(false);
+    }
+  }
+
+  async function sendToContacts() {
     if (selected.size === 0) return;
     setSending(true);
     try {
@@ -107,12 +127,36 @@ export function SendProductDialog({
     }
   }
 
+  const busy = sending || sharingStatus;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="truncate">Send “{productName}” to contacts</DialogTitle>
+          <DialogTitle className="truncate">Share “{productName}”</DialogTitle>
         </DialogHeader>
+
+        {/* Share to status */}
+        <Button
+          variant="outline"
+          onClick={shareToStatus}
+          disabled={busy}
+          className="w-full justify-start gap-2"
+        >
+          {sharingStatus ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Share2 className="h-4 w-4" />
+          )}
+          Share to WhatsApp status
+        </Button>
+
+        {/* Divider */}
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span className="h-px flex-1 bg-border" />
+          or send to contacts
+          <span className="h-px flex-1 bg-border" />
+        </div>
 
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -124,7 +168,7 @@ export function SendProductDialog({
           />
         </div>
 
-        <div className="max-h-72 min-h-40 overflow-y-auto rounded-lg border border-border">
+        <div className="max-h-64 min-h-40 overflow-y-auto rounded-lg border border-border">
           {loading ? (
             <div className="flex h-40 items-center justify-center">
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
@@ -168,8 +212,8 @@ export function SendProductDialog({
             Cancel
           </Button>
           <Button
-            onClick={send}
-            disabled={sending || selected.size === 0}
+            onClick={sendToContacts}
+            disabled={busy || selected.size === 0}
             className="flex-1"
           >
             {sending ? (
