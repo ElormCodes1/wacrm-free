@@ -69,8 +69,27 @@ export async function middleware(request: NextRequest) {
     return withRefreshedCookies(NextResponse.redirect(url))
   }
 
-  // Protected pages - redirect to login if not authenticated
-  const protectedPaths = ['/dashboard', '/inbox', '/contacts', '/pipelines', '/broadcasts', '/automations', '/settings']
+  // Protected pages - redirect to login if not authenticated.
+  // Must list EVERY authenticated (dashboard) route: an omission means an
+  // unauthenticated visitor reaches the page instead of being bounced to
+  // login (RLS still blocks their data, but the page shouldn't render).
+  const protectedPaths = [
+    '/dashboard',
+    '/inbox',
+    '/contacts',
+    '/pipelines',
+    '/broadcasts',
+    '/automations',
+    '/settings',
+    '/tasks',
+    '/status',
+    '/store',
+    '/notifications',
+    '/agents',
+    '/channels',
+    '/communities',
+    '/flows',
+  ]
   if (!user && protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
