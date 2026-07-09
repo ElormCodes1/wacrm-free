@@ -11,6 +11,7 @@ import {
   EyeOff,
   Eye,
   Share2,
+  Send,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +24,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { toast } from "sonner";
+import { SendProductDialog } from "@/components/store/send-product-dialog";
 
 interface Product {
   id: string;
@@ -81,6 +83,8 @@ export default function StorePage() {
   const [isBusiness, setIsBusiness] = useState<boolean | null>(null);
   const [formFor, setFormFor] = useState<Product | "new" | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Product whose "send to contacts" picker is open.
+  const [sendFor, setSendFor] = useState<Product | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -265,6 +269,14 @@ export default function StorePage() {
                   <Button
                     size="sm"
                     variant="outline"
+                    title="Send to contacts"
+                    onClick={() => setSendFor(p)}
+                  >
+                    <Send className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
                     disabled={busyId === p.id}
                     title={p.isHidden ? "Show in catalog" : "Hide from catalog"}
                     onClick={() => toggleHidden(p)}
@@ -282,6 +294,15 @@ export default function StorePage() {
       )}
 
       <ProductSheet target={formFor} onClose={() => setFormFor(null)} onSaved={load} />
+
+      {sendFor && (
+        <SendProductDialog
+          productId={sendFor.id}
+          productName={sendFor.name}
+          open={!!sendFor}
+          onOpenChange={(o) => !o && setSendFor(null)}
+        />
+      )}
     </div>
   );
 }
