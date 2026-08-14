@@ -8,6 +8,10 @@ import {
   fetchGroupInfo,
   fetchInstance,
 } from '@/lib/whatsapp/provider/evolution'
+import {
+  resolveInstanceConfig,
+  type InstanceConfig,
+} from '@/lib/whatsapp/provider/config'
 import { normalizePhone } from '@/lib/whatsapp/phone-utils'
 import { formatEventSummary } from '@/lib/whatsapp/event-summary'
 import { findExistingContact } from '@/lib/contacts/dedupe'
@@ -336,17 +340,26 @@ async function handleGroupMessage(instanceName: string, data: any) {
     .maybeSingle()
   if (dup) return
 
+  // No name passed on purpose. A group's display name comes from
+  // `fetchGroupInfo` below, not from the message — and passing `groupId`
+  // here made every later group message look like a rename (groupId vs the
+  // enriched subject), quietly resetting "The Dokosi Family" back to
+  // "120363111718907840". Creation is unchanged: findOrCreateContact falls
+  // back to `phone`, which for a group *is* groupId.
   const groupContact = await findOrCreateContact(
     config.account_id,
     config.user_id,
     groupId,
-    groupId,
+    '',
     true,
   )
   if (!groupContact) return
 
-  // Enrich the group's name + picture from WhatsApp the first time we see it.
-  if (groupContact.wasCreated) {
+  // Enrich the group's name + picture from WhatsApp the first time we see
+  // it — and again for any group still showing its raw id, which covers
+  // both a failed first enrichment and the groups the rename bug above
+  // already reset. Self-limiting: once a subject lands, this stops firing.
+  if (groupContact.wasCreated || groupContact.contact.name === groupId) {
     const info = await fetchGroupInfo(instanceName, groupJid)
     if (info?.subject) {
       await supabaseAdmin()
@@ -914,17 +927,22 @@ async function handleReceiptUpdate(instanceName: string, updates: any[]) {
   }
 }
 
-async function resolveConfig(
-  instanceName: string,
-): Promise<{ id: string; account_id: string; user_id: string } | null> {
-  const { data, error } = await supabaseAdmin()
-    .from('whatsapp_config')
-    .select('id, account_id, user_id')
-    .eq('instance_name', instanceName)
-    .limit(1)
-    .maybeSingle()
-  if (error || !data) return null
-  return data
+/**
+ * Instance → owning account. Memoised (see `resolveInstanceConfig`): this
+ * runs on every inbound event, and an uncached SELECT here sat in front of
+ * every message write.
+ */
+async function resolveConfig(instanceName: string): Promise<InstanceConfig | null> {
+  return resolveInstanceConfig(instanceName, async (name) => {
+    const { data, error } = await supabaseAdmin()
+      .from('whatsapp_config')
+      .select('id, account_id, user_id')
+      .eq('instance_name', name)
+      .limit(1)
+      .maybeSingle()
+    if (error || !data) return null
+    return data
+  })
 }
 
 /** Convert a Baileys message object into the internal WhatsAppMessage. */
@@ -1368,7 +1386,10 @@ async function processMessage(
     contactRecord.id,
     whatsappConfigId,
   )
-  if (!convResult) return
+  if (!convResult) {
+    if (contactOutcome.pendingWrites) await contactOutcome.pendingWrites
+    return
+  }
   const conversation = convResult.conversation
 
   if (convResult.created) {
@@ -1381,6 +1402,7 @@ async function processMessage(
   // Reactions short-circuit — they aren't messages.
   if (message.type === 'reaction') {
     await handleReaction(message, conversation.id, contactRecord.id)
+    if (contactOutcome.pendingWrites) await contactOutcome.pendingWrites
     return
   }
 
@@ -1403,16 +1425,27 @@ async function processMessage(
       ? 'image'
       : 'text'
 
-  const { count: priorCustomerMsgCount } = await supabaseAdmin()
+  // "Has this contact ever written before?" — an existence check, not a
+  // count. The old `count: 'exact'` rescanned the whole thread on every
+  // inbound and grew with it, to decide a single boolean.
+  //
+  // Excluding *this* message's own id makes the answer identical whether
+  // the query reaches the DB before or after the INSERT below — which is
+  // what lets the two run concurrently and takes a full round trip off the
+  // critical path. (The IS NULL arm keeps rows whose message_id is null;
+  // a bare `neq` evaluates to NULL for those and would silently drop them,
+  // making a returning contact look brand new.)
+  const priorInboundQuery = supabaseAdmin()
     .from('messages')
-    .select('id', { count: 'exact', head: true })
+    .select('id')
     .eq('conversation_id', conversation.id)
     .eq('sender_type', 'customer')
-  const isFirstInboundMessage = (priorCustomerMsgCount ?? 0) === 0
+    .or(`message_id.is.null,message_id.neq."${message.id}"`)
+    .limit(1)
 
   // Insert first, fetch media after. `.select('id')` costs no extra round
   // trip and gives the backfill an unambiguous row to target.
-  const { data: insertedRow, error: msgError } = await supabaseAdmin()
+  const insertQuery = supabaseAdmin()
     .from('messages')
     .insert({
       conversation_id: conversation.id,
@@ -1430,10 +1463,24 @@ async function processMessage(
     .select('id')
     .single()
 
+  const [priorInbound, { data: insertedRow, error: msgError }] = await Promise.all([
+    priorInboundQuery,
+    insertQuery,
+  ])
+
   if (msgError) {
     console.error('Error inserting message:', msgError)
+    if (contactOutcome.pendingWrites) await contactOutcome.pendingWrites
     return
   }
+
+  if (priorInbound.error) {
+    console.error('[webhook] prior-inbound check failed:', priorInbound.error.message)
+  }
+  // On error, fall back to "not the first" — re-running a first-contact
+  // flow for an existing conversation is the worse of the two mistakes.
+  const isFirstInboundMessage =
+    !priorInbound.error && (priorInbound.data?.length ?? 0) === 0
 
   // Kick the media fetch off now so it overlaps the conversation update,
   // flows and automations below — none of which read media_url. It is
@@ -1531,10 +1578,12 @@ async function processMessage(
     text: contentText,
   })
 
-  // Settle the media fetch started right after the INSERT. By now it has
-  // had the whole flow/automation stage to run in, so this is usually
-  // already resolved.
+  // Settle the writes we started but didn't block on — the media fetch
+  // from just after the INSERT, and any pushName rename from before it.
+  // Both have had the whole flow/automation stage to run in, so these are
+  // usually already resolved.
   if (mediaBackfill) await mediaBackfill
+  if (contactOutcome.pendingWrites) await contactOutcome.pendingWrites
 }
 
 // ============================================================
@@ -1808,6 +1857,18 @@ type ContactRow = any
 interface ContactOutcome {
   contact: ContactRow
   wasCreated: boolean
+  /**
+   * A started-but-not-awaited write (currently just the pushName rename).
+   *
+   * Nothing downstream reads it — `contact` deliberately carries the row
+   * as it was read, which is what the awaited version returned too — so
+   * blocking the message insert on it bought nothing. Callers must still
+   * settle it before they return: we run inside `after()`, where a truly
+   * detached promise can be frozen before it writes.
+   *
+   * null when there was nothing to write.
+   */
+  pendingWrites: Promise<void> | null
 }
 
 async function findOrCreateContact(
@@ -1834,13 +1895,28 @@ async function findOrCreateContact(
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const existingContact = await findExistingContact(supabaseAdmin(), accountId, phone)
     if (existingContact) {
-      if (name && name !== existingContact.name) {
-        await supabaseAdmin()
-          .from('contacts')
-          .update({ name, updated_at: new Date().toISOString() })
-          .eq('id', existingContact.id)
-      }
-      return { contact: existingContact, wasCreated: false }
+      // WhatsApp sends pushName on every message, so this fires whenever a
+      // contact's display name drifts from ours. Started here, settled by
+      // the caller — see ContactOutcome.pendingWrites.
+      const pendingWrites =
+        name && name !== existingContact.name
+          ? Promise.resolve(
+              supabaseAdmin()
+                .from('contacts')
+                .update({ name, updated_at: new Date().toISOString() })
+                .eq('id', existingContact.id),
+            )
+              .then(({ error }) => {
+                if (error) console.error('[webhook] contact rename failed:', error.message)
+              })
+              .catch((err) =>
+                console.error(
+                  '[webhook] contact rename failed:',
+                  err instanceof Error ? err.message : err,
+                ),
+              )
+          : null
+      return { contact: existingContact, wasCreated: false, pendingWrites }
     }
 
     const { data: newContact, error: createError } = await supabaseAdmin()
@@ -1855,7 +1931,7 @@ async function findOrCreateContact(
       .select()
       .single()
 
-    if (!createError) return { contact: newContact, wasCreated: true }
+    if (!createError) return { contact: newContact, wasCreated: true, pendingWrites: null }
 
     // Insert failed — a lost race (unique violation) or a transient error.
     // Loop back to re-resolve the winner. A genuinely permanent error just
@@ -1866,7 +1942,7 @@ async function findOrCreateContact(
   // Exhausted retries — one final resolve for a winner that has since
   // committed, else give up and log.
   const raced = await findExistingContact(supabaseAdmin(), accountId, phone)
-  if (raced) return { contact: raced, wasCreated: false }
+  if (raced) return { contact: raced, wasCreated: false, pendingWrites: null }
   console.error('Error creating contact (retries exhausted):', lastError)
   return null
 }

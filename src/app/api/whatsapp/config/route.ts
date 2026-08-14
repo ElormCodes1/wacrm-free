@@ -10,7 +10,7 @@ import {
   jidToPhone,
   type EvolutionQr,
 } from '@/lib/whatsapp/provider/evolution'
-import { appWebhookConfig } from '@/lib/whatsapp/provider/config'
+import { appWebhookConfig, invalidateInstanceConfig } from '@/lib/whatsapp/provider/config'
 
 async function resolveAccountId(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -270,6 +270,9 @@ export async function DELETE(request: Request) {
     }
 
     await supabase.from('whatsapp_config').delete().eq('id', config.id)
+    // The webhook route memoises instance → account; drop this one now so
+    // any event still in flight can't resolve to the row we just deleted.
+    if (config.instance_name) invalidateInstanceConfig(config.instance_name)
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Error in WhatsApp config DELETE:', error)
