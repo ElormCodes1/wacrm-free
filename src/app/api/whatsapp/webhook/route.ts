@@ -14,7 +14,7 @@ import {
   resolveInstanceConfig,
   type InstanceConfig,
 } from '@/lib/whatsapp/provider/config'
-import { storageExtension } from '@/lib/whatsapp/media-naming'
+import { baseMime, storageExtension } from '@/lib/whatsapp/media-naming'
 import { normalizePhone } from '@/lib/whatsapp/phone-utils'
 import { formatEventSummary } from '@/lib/whatsapp/event-summary'
 import { findExistingContact } from '@/lib/contacts/dedupe'
@@ -1745,16 +1745,20 @@ async function storeInboundMedia(
   try {
     const media = await getBase64FromMediaMessage({ instanceName, message: rawMessage })
     if (!media?.base64) return { url: null, mime: fallbackMime ?? null }
-    // Keep the mime intact for Content-Type (`audio/ogg; codecs=opus` is
-    // valid and helps playback); only the extension lookup is normalised.
     const mime = media.mimetype || fallbackMime || 'application/octet-stream'
     const fileName = media.fileName || fallbackName
     const buffer = Buffer.from(media.base64, 'base64')
     const ext = storageExtension(fileName, mime)
     const path = `inbound/${messageId}${ext}`
+    // Upload with the mime stripped of its parameters. The bucket matches
+    // Content-Type against its allowed_mime_types list as an exact string,
+    // so `audio/ogg; codecs=opus` — what WhatsApp sends for every voice
+    // note — was rejected outright even though `audio/ogg` is allowed.
+    // Chromium sniffs the codec from the container, so nothing is lost.
+    const uploadMime = baseMime(mime) ?? 'application/octet-stream'
     const { error } = await supabaseAdmin()
       .storage.from('chat-media')
-      .upload(path, buffer, { contentType: mime, upsert: true })
+      .upload(path, buffer, { contentType: uploadMime, upsert: true })
     if (error) {
       console.error('[webhook] media upload failed:', error.message)
       return { url: null, mime }
