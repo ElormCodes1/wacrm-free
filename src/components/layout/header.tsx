@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ModeToggle } from "@/components/layout/mode-toggle";
 import { NotificationBell } from "@/components/layout/notification-bell";
+import { SearchDialog } from "@/components/search/search-dialog";
 import { NumberScopeSelector } from "@/components/layout/number-scope-selector";
 
 const pageTitles: Record<string, string> = {
@@ -73,6 +74,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-1 sm:gap-2">
+        <SearchDialog />
         <NumberScopeSelector />
         <NotificationBell />
         <ModeToggle />
