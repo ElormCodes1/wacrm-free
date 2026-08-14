@@ -404,9 +404,17 @@ async function handleGroupMessage(instanceName: string, data: any) {
   if (!convResult) return
 
   // Attribute the message to the member who sent it.
+  //
+  // `participant` is a LID for most senders and `participantAlt` (the real
+  // phone) is frequently absent, so the old `alt || participant` fallback
+  // wrote LID digits into author_phone — a number that looks plausible and
+  // belongs to nobody. Harmless while it was only a label; not harmless
+  // now the name is clickable, since acting on it would mint a contact
+  // around a fabricated number. Resolve properly, and store null rather
+  // than a guess when it can't be resolved.
   const authorPhone = key.fromMe
     ? null
-    : normalizePhone(jidToPhone(key.participantAlt || key.participant || ''))
+    : await resolveParticipantPhone(instanceName, key, groupJid)
   const authorName = key.fromMe ? null : data.pushName || authorPhone || null
 
   const message = adaptMessage(data)
@@ -563,6 +571,35 @@ function asMessages(data: any): any[] {
 // ============================================================
 // @mentions
 // ============================================================
+
+/**
+ * The real phone behind a group message's sender, or null.
+ *
+ * Prefers `participantAlt` (already a phone JID); otherwise resolves the
+ * LID, falling back to the group's member list — the only source that
+ * knows anyone we've never messaged directly. Returns null when WhatsApp
+ * won't tell us, which is a normal outcome for a large group.
+ */
+async function resolveParticipantPhone(
+  instanceName: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  key: any,
+  groupJid: string,
+): Promise<string | null> {
+  const alt: string = key?.participantAlt ?? ''
+  if (alt.endsWith('@s.whatsapp.net')) return normalizePhone(jidToPhone(alt)) || null
+
+  const participant: string = key?.participant ?? ''
+  if (!participant) return null
+  if (!participant.endsWith('@lid')) return normalizePhone(jidToPhone(participant)) || null
+
+  let resolved = await resolveLid(instanceName, participant)
+  if (!resolved) {
+    await learnLidsFromGroup(instanceName, groupJid)
+    resolved = await resolveLid(instanceName, participant)
+  }
+  return resolved ? normalizePhone(jidToPhone(resolved)) || null : null
+}
 
 /**
  * Resolve a message's mentions to storable records.

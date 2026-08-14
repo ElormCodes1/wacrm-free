@@ -1888,10 +1888,19 @@ export function learnLidsFromKey(instanceName: string, key: any): void {
  *
  * Best-effort and safe to call repeatedly; learning is idempotent.
  */
+const groupSweepAt = new Map<string, number>()
+const GROUP_SWEEP_TTL_MS = 10 * 60 * 1000
+
 export async function learnLidsFromGroup(
   instanceName: string,
   groupJid: string,
 ): Promise<void> {
+  // Throttled per group: members whose number WhatsApp simply won't share
+  // never resolve, so an unthrottled call would re-fetch the whole member
+  // list on every message in a busy group, forever.
+  const key = `${instanceName}|${groupJid}`
+  if (Date.now() - (groupSweepAt.get(key) ?? 0) < GROUP_SWEEP_TTL_MS) return
+  groupSweepAt.set(key, Date.now())
   try {
     const data = await evolutionFetch<unknown>(
       `/group/participants/${encodeURIComponent(instanceName)}?groupJid=${encodeURIComponent(groupJid)}`,
