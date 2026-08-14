@@ -2,16 +2,18 @@
 // GET /api/audit — recent account activity
 //
 // Reads the trail written by the database triggers in migration 061.
-// Runs on the caller's session client so RLS decides visibility; the
-// policy allows members to SELECT their own account's rows and nothing
-// else, and there is deliberately no write policy — the trail cannot be
-// edited through the API by the person being audited.
+// Admins only, enforced twice over: RLS restricts SELECT to
+// is_account_member(account_id, 'admin'), and the role is checked here so
+// a non-admin gets an explicit refusal rather than an empty list that
+// reads as "nothing has happened". There is deliberately no write policy —
+// the trail cannot be edited through the API by the person being audited.
 //
 // Query: ?limit=&table=&record_id=
 // ============================================================
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { canViewAuditLog, type AccountRole } from '@/lib/auth/roles';
 
 const MAX_LIMIT = 200;
 
@@ -24,6 +26,22 @@ export async function GET(request: Request) {
     } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // RLS already restricts this to admins, but an unauthorised caller
+    // would get an empty list — indistinguishable from "nothing has
+    // happened yet". Check the role so the answer is an explicit refusal.
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('account_role')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    const role = profile?.account_role as AccountRole | undefined;
+    if (!role || !canViewAuditLog(role)) {
+      return NextResponse.json(
+        { error: 'Only account admins can view the audit log.' },
+        { status: 403 }
+      );
     }
 
     const url = new URL(request.url);

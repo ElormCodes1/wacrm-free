@@ -3,6 +3,8 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/hooks/use-auth';
+import { canViewAuditLog, isAccountRole } from '@/lib/auth/roles';
 import {
   RAIL_GROUPS,
   SECTION_META,
@@ -30,6 +32,12 @@ export function SettingsRail({
   onSelect: (section: SettingsSection) => void;
   hints?: Partial<Record<SettingsSection, ReactNode>>;
 }) {
+  // Admin-only sections are hidden rather than shown-and-refused. The API
+  // and RLS are what actually enforce it; this only avoids offering a door
+  // that won't open.
+  const { profile } = useAuth();
+  const role = profile?.account_role;
+  const isAdmin = isAccountRole(role) && canViewAuditLog(role);
   const activeRef = useRef<HTMLButtonElement>(null);
 
   // When horizontal (mobile), keep the active chip in view. On desktop
@@ -55,8 +63,11 @@ export function SettingsRail({
     >
       {RAIL_GROUPS.map(({ label, group }) => {
         const items = SETTINGS_SECTIONS.filter(
-          (s) => SECTION_META[s].group === group,
+          (s) =>
+            SECTION_META[s].group === group &&
+            (!SECTION_META[s].adminOnly || isAdmin),
         );
+        if (items.length === 0) return null;
         return (
           <div
             key={group}

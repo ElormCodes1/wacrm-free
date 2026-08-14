@@ -16,6 +16,7 @@ import { DealsSettings } from '@/components/settings/deals-settings';
 import { MembersTab } from '@/components/settings/members-tab';
 import { ApiKeysSettings } from '@/components/settings/api-keys-settings';
 import { AuditLogPanel } from '@/components/settings/audit-log-panel';
+import { canViewAuditLog, isAccountRole } from '@/lib/auth/roles';
 import {
   resolveSection,
   type SettingsSection,
@@ -24,7 +25,12 @@ import {
 export default function SettingsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { defaultCurrency } = useAuth();
+  const { defaultCurrency, profile } = useAuth();
+  // Hiding the rail entry isn't enough — `?tab=audit` is a deep link
+  // anyone can type. The API and RLS refuse them regardless; this just
+  // avoids rendering a panel that would only show an error.
+  const role = profile?.account_role;
+  const mayViewAudit = isAccountRole(role) && canViewAuditLog(role);
 
   // The URL (`?tab=`) is the single source of truth for the active
   // section — deep-linkable, and it keeps the existing links in the
@@ -66,7 +72,13 @@ export default function SettingsPage() {
     deals: <DealsSettings />,
     members: <MembersTab />,
     api: <ApiKeysSettings />,
-    audit: <AuditLogPanel />,
+    audit: mayViewAudit ? (
+      <AuditLogPanel />
+    ) : (
+      <p className="text-muted-foreground py-12 text-center text-sm">
+        Only account admins can view the audit log.
+      </p>
+    ),
   };
 
   return (

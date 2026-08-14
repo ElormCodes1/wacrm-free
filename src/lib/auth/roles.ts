@@ -81,6 +81,19 @@ export function canEditSettings(role: AccountRole): boolean {
 }
 
 /**
+ * Owner / admin: read the audit log.
+ *
+ * The trail records who changed what across the account, including the
+ * actions of colleagues. That is oversight data, so it sits with the roles
+ * that already administer the account rather than with everyone who can
+ * use it — an agent being able to review their own supervision inverts the
+ * point of keeping it.
+ */
+export function canViewAuditLog(role: AccountRole): boolean {
+  return hasMinRole(role, "admin");
+}
+
+/**
  * Owner / admin / agent: write operational data — send messages,
  * create contacts, move deals, run broadcasts, edit automations.
  * Viewers are read-only.
