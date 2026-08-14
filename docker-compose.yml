@@ -21,26 +21,40 @@ name: wacrm-free
 
 services:
   app:
+    # No `build.args` here on purpose. Compose resolves ${VAR} in build args
+    # while PARSING the file, before a platform like Coolify has generated
+    # anything — and Coolify fails the deployment outright on build args,
+    # in seconds, with an empty build log that gives no clue which line did
+    # it. Local builds get their NEXT_PUBLIC_* args from
+    # docker-compose.override.yml (see docker-compose.override.example.yml),
+    # which a bare `docker compose up` auto-loads and an explicit `-f`
+    # deploy ignores.
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        # NEXT_PUBLIC_* are inlined at build time (see Dockerfile).
-        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
-        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
     container_name: wacrm_free_app
     restart: unless-stopped
-    ports:
-      - "3000:3000"
+    # `expose`, not `ports`. A host port binding collides with the reverse
+    # proxy that already holds :3000 ("port is already allocated") and, even
+    # when free, routes around it — no TLS, no domain. Host ports for local
+    # use live in the override.
+    expose:
+      - "3000"
     env_file:
       - .env
     environment:
       # Inside the compose network the app reaches Evolution by service
       # name, and Evolution reaches the app back the same way — these
       # override the localhost/dev values in .env.
-      EVOLUTION_API_URL: http://evolution-api:8080
-      EVOLUTION_WEBHOOK_URL: http://app:3000/api/whatsapp/webhook
+      - EVOLUTION_API_URL=http://evolution-api:8080
+      - EVOLUTION_WEBHOOK_URL=http://app:3000/api/whatsapp/webhook
+      # Bare keys, deliberately: this is how a platform is told which port
+      # to route to (it reads the port out of the variable's NAME) and how
+      # generated values are received. Writing `- APP_URL=${APP_URL:-}`
+      # instead would create an EMPTY user variable that shadows the
+      # generated one — worse than omitting the line.
+      - SERVICE_FQDN_APP_3000
+      - APP_URL
     depends_on:
       - evolution-api
     networks:
@@ -62,10 +76,9 @@ services:
     depends_on:
       - evolution-redis
       - evolution-postgres
-    ports:
-      # Bound to localhost only — the API is reachable at :8088 for the
-      # built-in manager UI (/manager) and curl, not the public internet.
-      - "127.0.0.1:8088:8080"
+    # No host port. The app reaches the gateway in-network by service name,
+    # so publishing one only exposes it on the server. The local override
+    # binds 127.0.0.1:8088 for the manager UI (/manager) and curl.
     volumes:
       - evolution_instances:/evolution/instances
     # Config inlined here so the full-stack compose is self-contained (no

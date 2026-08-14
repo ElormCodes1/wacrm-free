@@ -1,0 +1,35 @@
+# Local development overrides — copy to docker-compose.override.yml.
+#
+#   cp docker-compose.override.example.yml docker-compose.override.yml
+#   docker compose up -d --build
+#
+# Compose auto-loads docker-compose.override.yml for a bare `docker compose
+# up`, and IGNORES it when files are named explicitly with `-f` — which is
+# how Coolify and most CI runners invoke it. So everything here applies
+# locally and never on a server, which is exactly what these two settings
+# need:
+#
+#   * host ports — on a server the reverse proxy owns :3000, and binding it
+#     both collides and routes around TLS/domain handling.
+#   * build args — Compose resolves ${VAR} while PARSING, before a platform
+#     has generated anything, and Coolify fails the deploy outright (in
+#     seconds, with an empty build log) if build args are present at all.
+#
+# NEXT_PUBLIC_* must be build args because Next.js inlines them into the
+# client bundle at build time; they cannot be supplied at runtime. Values
+# come from the root .env.
+
+services:
+  app:
+    build:
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+    ports:
+      - "3000:3000"
+
+  evolution-api:
+    ports:
+      # Localhost only — the manager UI (/manager) and curl, not the network.
+      - "127.0.0.1:8088:8080"

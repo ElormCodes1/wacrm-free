@@ -86,8 +86,20 @@ cp .env.local.example .env
 #              SUPABASE_SERVICE_ROLE_KEY, ENCRYPTION_KEY, EVOLUTION_API_KEY
 #  (the Evolution URLs are set automatically by docker-compose)
 
+cp docker-compose.override.example.yml docker-compose.override.yml
+
 docker compose up -d --build
 ```
+
+The override supplies the host ports (`localhost:3000`, `localhost:8088`)
+and the `NEXT_PUBLIC_*` build args. They live there rather than in
+`docker-compose.yml` because a bare `docker compose up` auto-loads the
+override while an explicit `-f` — how Coolify and most CI runners invoke
+compose — ignores it. On a server both settings are actively harmful: a
+host port binding collides with the reverse proxy that already owns :3000
+and routes around its TLS, and build args fail a Coolify deploy outright,
+in seconds, with an empty build log. Keeping them local-only means the base
+file deploys cleanly and still runs on a laptop.
 
 This builds the app and **pulls the WhatsApp gateway as a prebuilt image**
 (`ghcr.io/elormcodes1/evolution-api` — our patched Evolution API fork), so
