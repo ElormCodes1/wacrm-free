@@ -122,8 +122,65 @@ services:
       CORS_ORIGIN: "*"
       CORS_METHODS: GET,POST,PUT,DELETE
       CORS_CREDENTIALS: "true"
+    # Restarted automatically when the WhatsApp socket dies (see autoheal).
+    labels:
+      autoheal: "true"
+    # The socket dies quietly and `connectionState` keeps reporting "open"
+    # throughout, so an HTTP ping is worthless here — the gateway answered
+    # every request while delivering no messages for hours. This makes the
+    # socket actually do something: an onWhatsApp round-trip per instance
+    # that CLAIMS to be connected. A logged-out instance is not a fault and
+    # is skipped; an "open" one that cannot carry a request is exactly the
+    # failure we are looking for.
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - |
+          const key = process.env.AUTHENTICATION_API_KEY;
+          const base = 'http://127.0.0.1:8080';
+          (async () => {
+            const res = await fetch(base + '/instance/fetchInstances', { headers: { apikey: key } });
+            const list = await res.json();
+            for (const inst of list) {
+              if (inst.connectionStatus !== 'open') continue;
+              const probe = await fetch(base + '/chat/whatsappNumbers/' + inst.name, {
+                method: 'POST',
+                headers: { apikey: key, 'content-type': 'application/json' },
+                body: JSON.stringify({ numbers: ['000000000000'] }),
+              });
+              if (!probe.ok) { console.error('dead socket:', inst.name, probe.status); process.exit(1); }
+            }
+            process.exit(0);
+          })().catch((e) => { console.error('probe failed:', e.message); process.exit(1); });
+      interval: 90s
+      timeout: 30s
+      retries: 3
+      # Reconnecting after a restart takes a while; don't flap during it.
+      start_period: 180s
     networks:
       - wacrm-net
+
+  # Restarts containers Docker has marked unhealthy. Compose's `restart:`
+  # policy does NOT cover unhealthy — only exits — so without this the
+  # healthcheck above would detect a dead socket and do nothing about it,
+  # which is where we were: the app could see the fault but had no way to
+  # restart its own gateway.
+  #
+  # Needs the Docker socket, which is root-equivalent on the host. It is
+  # mounted read-only and the image only ever restarts containers carrying
+  # the `autoheal` label.
+  autoheal:
+    image: willfarrell/autoheal:latest
+    container_name: wacrm_autoheal
+    restart: unless-stopped
+    environment:
+      AUTOHEAL_CONTAINER_LABEL: autoheal
+      AUTOHEAL_INTERVAL: "30"
+      AUTOHEAL_START_PERIOD: "180"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
 
   evolution-postgres:
     image: postgres:15-alpine
