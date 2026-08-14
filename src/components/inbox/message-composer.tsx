@@ -95,11 +95,36 @@ interface ReplyDraft {
 // the file picker so unsupported files are rejected before upload rather
 // than failing with a confusing Storage error. Audio has no picker — it's
 // captured via the recorder.
+// Kept in step with the bucket allowlist (migration 056). Extensions are
+// listed alongside mimes because browsers report an empty or wrong
+// `type` for plenty of files — a .csv often arrives as
+// application/vnd.ms-excel, a .heic frequently as "" — and a mime-only
+// accept list silently greys those out in the picker.
+//
+// Script-bearing types (.html, .svg) are absent on purpose: chat-media is
+// public, so letting an agent upload one would publish a live page on our
+// domain. Inbound files of those types are still kept — the webhook
+// stores them as downloads instead. See safeUploadMime.
 const PICKER_ACCEPT: Record<"image" | "video" | "document", string> = {
-  image: "image/png,image/jpeg,image/webp",
-  video: "video/mp4,video/3gpp",
+  image:
+    "image/png,image/jpeg,image/webp,image/gif,image/heic,image/heif,image/bmp,image/tiff,image/avif," +
+    ".png,.jpg,.jpeg,.webp,.gif,.heic,.heif,.bmp,.tif,.tiff,.avif",
+  video:
+    "video/mp4,video/3gpp,video/webm,video/quicktime,video/x-matroska,video/x-msvideo,video/mpeg," +
+    ".mp4,.3gp,.webm,.mov,.mkv,.avi,.mpeg,.mpg",
   document:
-    "application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain",
+    "application/pdf," +
+    "application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document," +
+    "application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet," +
+    "application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation," +
+    "application/vnd.oasis.opendocument.text,application/vnd.oasis.opendocument.spreadsheet," +
+    "application/vnd.oasis.opendocument.presentation," +
+    "application/rtf,text/plain,text/csv,text/markdown,application/json," +
+    "application/epub+zip,text/vcard,text/calendar," +
+    "application/zip,application/x-zip-compressed,application/vnd.rar," +
+    "application/x-7z-compressed,application/gzip,application/x-tar," +
+    ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.rtf,.txt,.csv,.tsv,.md," +
+    ".json,.xml,.yaml,.yml,.epub,.vcf,.ics,.zip,.rar,.7z,.gz,.tar,.tex,.log",
 };
 
 interface MediaDraft {

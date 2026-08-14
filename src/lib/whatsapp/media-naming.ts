@@ -72,3 +72,42 @@ export function extensionFromFilename(name?: string | null): string {
 export function storageExtension(fileName?: string | null, mime?: string | null): string {
   return extensionFromFilename(fileName) || MIME_EXT[baseMime(mime) ?? ''] || ''
 }
+
+/**
+ * Types a browser will execute or render inline rather than download.
+ *
+ * chat-media is a PUBLIC bucket, so anything stored under one of these
+ * Content-Types becomes a live page on the Supabase domain — an HTML file
+ * or an SVG (which can carry <script>) forwarded through WhatsApp would be
+ * a hosted XSS/phishing page one click away.
+ */
+const INLINE_EXECUTABLE_MIMES = new Set([
+  'text/html',
+  'application/xhtml+xml',
+  'image/svg+xml',
+  'text/xml',
+  'application/xml',
+  'text/javascript',
+  'application/javascript',
+  'application/x-javascript',
+  'application/ecmascript',
+])
+
+/**
+ * The Content-Type to store a file under.
+ *
+ * Strips mime parameters — Storage matches its allowed_mime_types as an
+ * exact string, so `audio/ogg; codecs=opus` fails against `audio/ogg`.
+ *
+ * Then neutralises anything a browser would execute. We deliberately keep
+ * the file (losing a customer's attachment is not an acceptable way to be
+ * safe) but serve it as a download instead of a page. The extension is
+ * taken from the filename, so `report.html` still saves as `report.html`
+ * — it just can't run from our domain. PDFs are intentionally left inline:
+ * browsers sandbox their viewers and inline preview is the point of them.
+ */
+export function safeUploadMime(mime?: string | null): string {
+  const base = baseMime(mime)
+  if (!base) return 'application/octet-stream'
+  return INLINE_EXECUTABLE_MIMES.has(base) ? 'application/octet-stream' : base
+}

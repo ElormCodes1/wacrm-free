@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { baseMime, extensionFromFilename, storageExtension } from './media-naming'
+import {
+  baseMime,
+  extensionFromFilename,
+  storageExtension,
+  safeUploadMime,
+} from './media-naming'
 
 // The mime strings below are verbatim from Evolution's
 // getBase64FromMediaMessage against a live WhatsApp instance — not
@@ -97,5 +102,57 @@ describe('storageExtension', () => {
   it('returns empty rather than guessing on an unknown type', () => {
     expect(storageExtension(undefined, 'application/x-made-up')).toBe('')
     expect(storageExtension(undefined, undefined)).toBe('')
+  })
+})
+
+describe('safeUploadMime', () => {
+  it('strips parameters so Storage’s exact-string allowlist matches', () => {
+    // The bug that stopped every voice note from uploading.
+    expect(safeUploadMime('audio/ogg; codecs=opus')).toBe('audio/ogg')
+  })
+
+  it('passes ordinary types through untouched', () => {
+    expect(safeUploadMime('application/zip')).toBe('application/zip')
+    expect(safeUploadMime('image/jpeg')).toBe('image/jpeg')
+    expect(safeUploadMime('video/mp4')).toBe('video/mp4')
+  })
+
+  it('leaves PDFs inline — sandboxed viewers, and preview is the point', () => {
+    expect(safeUploadMime('application/pdf')).toBe('application/pdf')
+  })
+
+  it('neutralises types a browser would execute from our public bucket', () => {
+    // chat-media is public: stored as-is, each of these is a live page on
+    // the Supabase domain. Kept, but served as a download.
+    for (const mime of [
+      'text/html',
+      'application/xhtml+xml',
+      'image/svg+xml',
+      'text/xml',
+      'application/xml',
+      'text/javascript',
+      'application/javascript',
+      'application/x-javascript',
+      'application/ecmascript',
+    ]) {
+      expect(safeUploadMime(mime)).toBe('application/octet-stream')
+    }
+  })
+
+  it('neutralises them regardless of case or parameters', () => {
+    expect(safeUploadMime('TEXT/HTML; charset=utf-8')).toBe('application/octet-stream')
+    expect(safeUploadMime('image/svg+xml; charset=utf-8')).toBe('application/octet-stream')
+  })
+
+  it('falls back to octet-stream when the type is unknown', () => {
+    expect(safeUploadMime(undefined)).toBe('application/octet-stream')
+    expect(safeUploadMime(null)).toBe('application/octet-stream')
+    expect(safeUploadMime('')).toBe('application/octet-stream')
+  })
+
+  it('keeps a neutralised file’s real extension (it downloads correctly)', () => {
+    // The pairing that matters: safe Content-Type, honest filename.
+    expect(safeUploadMime('text/html')).toBe('application/octet-stream')
+    expect(storageExtension('battery-report.html', 'text/html')).toBe('.html')
   })
 })
