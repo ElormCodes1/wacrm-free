@@ -7,6 +7,7 @@ import {
   canManageMembers,
   canSendMessages,
   canTransferOwnership,
+  canViewAuditLog,
   canViewOnly,
   hasMinRole,
   isAccountRole,
@@ -126,5 +127,37 @@ describe("capability predicates", () => {
     expect(canTransferOwnership("admin")).toBe(false);
     expect(canTransferOwnership("agent")).toBe(false);
     expect(canTransferOwnership("viewer")).toBe(false);
+  });
+});
+
+describe("canViewAuditLog", () => {
+  // The audit trail records colleagues' actions, so it sits with the roles
+  // that administer the account rather than with everyone who can use it.
+  // Verified against the live database as well: a real signed-in agent
+  // sees 0 audit rows while the service role sees the row that exists.
+  it("allows owner and admin", () => {
+    expect(canViewAuditLog("owner")).toBe(true);
+    expect(canViewAuditLog("admin")).toBe(true);
+  });
+
+  it("refuses agent and viewer", () => {
+    expect(canViewAuditLog("agent")).toBe(false);
+    expect(canViewAuditLog("viewer")).toBe(false);
+  });
+
+  it("tracks the other admin-level capabilities", () => {
+    // Divergence here should be a deliberate decision, not a side effect
+    // of someone adjusting hasMinRole.
+    for (const role of ACCOUNT_ROLES as readonly AccountRole[]) {
+      expect(canViewAuditLog(role)).toBe(canManageMembers(role));
+      expect(canViewAuditLog(role)).toBe(canEditSettings(role));
+    }
+  });
+
+  it("is narrower than being able to use the CRM", () => {
+    // An agent can send messages but must not read the trail — the exact
+    // pairing that makes the gate meaningful.
+    expect(canSendMessages("agent")).toBe(true);
+    expect(canViewAuditLog("agent")).toBe(false);
   });
 });
