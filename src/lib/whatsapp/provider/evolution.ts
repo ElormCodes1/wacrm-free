@@ -1877,6 +1877,37 @@ export function learnLidsFromKey(instanceName: string, key: any): void {
   learnLid(instanceName, key.participant, key.participantAlt)
 }
 
+/**
+ * Learn every LID→phone pair in a group's member list.
+ *
+ * The only source that covers people we've never spoken to directly —
+ * which is exactly who gets @mentioned in a group. Chats and message
+ * history can't help there: no chat exists, so there is nothing to read.
+ * Evolution returns `phoneNumber` alongside each participant's LID (not
+ * for all of them, but for most).
+ *
+ * Best-effort and safe to call repeatedly; learning is idempotent.
+ */
+export async function learnLidsFromGroup(
+  instanceName: string,
+  groupJid: string,
+): Promise<void> {
+  try {
+    const data = await evolutionFetch<unknown>(
+      `/group/participants/${encodeURIComponent(instanceName)}?groupJid=${encodeURIComponent(groupJid)}`,
+      { method: 'GET' },
+    )
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const list = Array.isArray(data) ? data : (data as any)?.participants
+    if (!Array.isArray(list)) return
+    for (const p of list) {
+      learnLid(instanceName, p?.id, p?.phoneNumber ?? p?.jid)
+    }
+  } catch {
+    /* nothing learned; callers treat mentions as unresolved */
+  }
+}
+
 /** Merge (never replace) whatever findChats can currently tell us. */
 async function sweepLidsFromChats(instanceName: string): Promise<void> {
   try {

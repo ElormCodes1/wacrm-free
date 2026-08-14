@@ -299,6 +299,13 @@ export interface Message {
    * non-media messages and on rows predating the split.
    */
   media_status?: "pending" | "ready" | "failed" | null;
+  /**
+   * @mentions resolved at receive time. The text carries a bare
+   * `@<token>`; this maps each token to the person, so the thread can
+   * show a name instead of raw digits and link it to their profile.
+   * `phone` is null when the LID hasn't been resolved yet.
+   */
+  mentions?: { token: string; jid: string; phone: string | null }[] | null;
   template_name?: string;
   message_id?: string;
   status: MessageStatus;

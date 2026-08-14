@@ -9,12 +9,18 @@ import {
   findContactByJid,
   fetchGroupInfo,
   fetchInstance,
+  learnLidsFromGroup,
 } from '@/lib/whatsapp/provider/evolution'
 import {
   resolveInstanceConfig,
   type InstanceConfig,
 } from '@/lib/whatsapp/provider/config'
 import { safeUploadMime, storageExtension } from '@/lib/whatsapp/media-naming'
+import {
+  extractMentionJids,
+  jidLocalPart,
+  type MessageMention,
+} from '@/lib/whatsapp/mentions'
 import { normalizePhone } from '@/lib/whatsapp/phone-utils'
 import { formatEventSummary } from '@/lib/whatsapp/event-summary'
 import { findExistingContact } from '@/lib/contacts/dedupe'
@@ -425,6 +431,7 @@ async function handleGroupMessage(instanceName: string, data: any) {
       author_phone: authorPhone,
       status: key.fromMe ? 'sent' : 'delivered',
       created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),
+      mentions: await resolveMentions(instanceName, message._raw, groupJid),
     })
     .select('id')
     .single()
@@ -551,6 +558,53 @@ function asMessages(data: any): any[] {
   if (Array.isArray(data)) return data
   if (Array.isArray(data.messages)) return data.messages
   return [data]
+}
+
+// ============================================================
+// @mentions
+// ============================================================
+
+/**
+ * Resolve a message's mentions to storable records.
+ *
+ * The JIDs are usually LIDs, so each needs the same lookup an inbound
+ * message address does — and `resolveLid` is already warm with everything
+ * learned from other events. A mention we can't resolve is still recorded
+ * (phone null): the thread can show it as a person rather than as raw
+ * digits, and the jid is kept so it resolves later without re-reading the
+ * WhatsApp payload.
+ */
+async function resolveMentions(
+  instanceName: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  rawMessage: any,
+  /** Set for group messages — unlocks the member-list lookup below. */
+  groupJid?: string | null,
+): Promise<MessageMention[] | null> {
+  const jids = extractMentionJids(rawMessage)
+  if (!jids.length) return null
+
+  // People mentioned in a group are usually ones we've never messaged, so
+  // neither chats nor message history knows their number. The group's own
+  // member list does, and it's the only source that does — without this,
+  // group mentions stay unresolved, which is the main case this feature
+  // exists for. One call covers every mention in the message.
+  if (groupJid && jids.some((j) => j.endsWith('@lid'))) {
+    await learnLidsFromGroup(instanceName, groupJid)
+  }
+
+  const mentions: MessageMention[] = []
+  for (const jid of jids) {
+    let phone: string | null = null
+    try {
+      const resolved = jid.endsWith('@lid') ? await resolveLid(instanceName, jid) : jid
+      if (resolved) phone = normalizePhone(jidToPhone(resolved)) || null
+    } catch {
+      /* unresolved is a valid state — keep the mention, drop the phone */
+    }
+    mentions.push({ token: jidLocalPart(jid), jid, phone })
+  }
+  return mentions
 }
 
 // ============================================================
@@ -792,6 +846,7 @@ async function handleOutboundEcho(instanceName: string, data: any, resolvedJid: 
       message_id: key.id,
       status: 'sent',
       created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),
+      mentions: await resolveMentions(instanceName, message._raw),
     })
     .select('id')
     .single()
@@ -1560,6 +1615,8 @@ async function processMessage(
       ? 'image'
       : 'text'
 
+  const mentions = await resolveMentions(instanceName, message._raw)
+
   // "Has this contact ever written before?" — an existence check, not a
   // count. The old `count: 'exact'` rescanned the whole thread on every
   // inbound and grew with it, to decide a single boolean.
@@ -1594,6 +1651,7 @@ async function processMessage(
       created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),
       reply_to_message_id: replyToInternalId,
       interactive_reply_id: interactiveReplyId,
+      mentions,
     })
     .select('id')
     .single()

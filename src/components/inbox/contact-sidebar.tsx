@@ -27,6 +27,8 @@ import {
   Square,
   CheckSquare,
   Star,
+  ArrowLeft,
+  MessageSquare,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -66,11 +68,27 @@ interface ContactSidebarProps {
     name?: string;
     avatarUrl?: string | null;
   }) => void;
+  /**
+   * Set when this panel is showing someone opened from inside the thread
+   * (an @mention, a group member) rather than the conversation's own
+   * contact. Renders a way back and a way to message them.
+   */
+  peeking?: boolean;
+  /** Return to the conversation's own contact. */
+  onClosePeek?: () => void;
+  /** Open this person's 1:1 thread. */
+  onMessage?: () => void;
+  /** Resolving the profile — the panel is showing but has no contact yet. */
+  loading?: boolean;
 }
 
 export function ContactSidebar({
   contact,
   onGroupResolved,
+  peeking = false,
+  onClosePeek,
+  onMessage,
+  loading = false,
 }: ContactSidebarProps) {
   const { accountId, defaultCurrency } = useAuth();
   const [copied, setCopied] = useState(false);
@@ -323,6 +341,14 @@ export function ContactSidebar({
     defaultCurrency,
   ]);
 
+  if (loading && !contact) {
+    return (
+      <div className="border-border bg-card flex h-full w-70 items-center justify-center border-l">
+        <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
+      </div>
+    );
+  }
+
   if (!contact) {
     return (
       <div className="border-border bg-card flex h-full w-70 items-center justify-center border-l">
@@ -336,6 +362,34 @@ export function ContactSidebar({
 
   return (
     <div className="border-border bg-card flex h-full w-70 flex-col border-l">
+      {/* Peek header. Shown only when this panel is displaying someone
+          opened from inside the thread, so the agent can tell at a glance
+          that the conversation behind them hasn't changed — and get back
+          to it, or switch to this person's own thread. */}
+      {peeking && (
+        <div className="border-border flex items-center gap-1 border-b px-2 py-1.5">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onClosePeek}
+            className="h-8 gap-1 px-2 text-xs"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Back
+          </Button>
+          {onMessage && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onMessage}
+              className="ml-auto h-8 gap-1 px-2 text-xs"
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+              Message
+            </Button>
+          )}
+        </div>
+      )}
       <ScrollArea className="flex-1">
         <div className="p-4">
           {/* Contact Info */}

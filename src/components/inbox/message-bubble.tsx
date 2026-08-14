@@ -25,6 +25,8 @@ import {
 import { format } from 'date-fns';
 import { ReplyQuote } from './reply-quote';
 import { MessageReactions } from './message-reactions';
+import { useMentions } from './mention-context';
+import { splitMentionTokens } from '@/lib/whatsapp/mentions';
 
 interface MessageBubbleProps {
   message: Message;
@@ -35,9 +37,58 @@ interface MessageBubbleProps {
   onToggleReaction?: (emoji: string) => void;
 }
 
+/**
+ * Turn `@<token>` runs into clickable names.
+ *
+ * Applied only to the plain-text stretches left over after URL matching —
+ * a link like `https://x.com/@1234567` contains something that looks
+ * exactly like a mention, and splitting the raw string first would break
+ * the URL in half.
+ */
+function MentionRuns({ text, keyBase }: { text: string; keyBase: number }) {
+  const { labelFor, phoneFor, openProfile } = useMentions();
+  const parts = splitMentionTokens(text);
+  if (parts.length === 1 && parts[0].type === 'text') return <>{text}</>;
+
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (part.type === 'text') return part.value;
+        const phone = phoneFor(part.token);
+        // Not every mention can be resolved: WhatsApp only shares a
+        // member's number once you've had some contact with them, so a
+        // mention of a stranger in a large group has no phone and no
+        // pushName. Render those as inert text — a link that opens
+        // nothing is worse than no link.
+        if (!phone) {
+          return (
+            <span key={`${keyBase}-m-${i}`} className="font-medium opacity-80">
+              @{labelFor(part.token)}
+            </span>
+          );
+        }
+        return (
+          <button
+            key={`${keyBase}-m-${i}`}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              openProfile({ phone, name: labelFor(part.token) });
+            }}
+            className="text-tick-read font-medium underline underline-offset-2 hover:opacity-80"
+          >
+            @{labelFor(part.token)}
+          </button>
+        );
+      })}
+    </>
+  );
+}
+
 // Render message text with URLs turned into clickable hyperlinks
 // (WhatsApp-style). Matches http(s):// and bare www. links, doesn't swallow
-// trailing sentence punctuation, and opens in a new tab.
+// trailing sentence punctuation, and opens in a new tab. Plain stretches
+// then get @mention handling — see MentionRuns for why in that order.
 function LinkText({ text }: { text: string | null | undefined }) {
   if (!text) return null;
   // Local regex per call — a shared /g regex carries mutable lastIndex state.
@@ -45,9 +96,13 @@ function LinkText({ text }: { text: string | null | undefined }) {
   const nodes: ReactNode[] = [];
   let last = 0;
   let key = 0;
+  const pushPlain = (value: string) => {
+    if (!value) return;
+    nodes.push(<MentionRuns key={`t${key++}`} text={value} keyBase={key} />);
+  };
   for (const m of text.matchAll(urlRe)) {
     const start = m.index ?? 0;
-    if (start > last) nodes.push(text.slice(last, start));
+    if (start > last) pushPlain(text.slice(last, start));
     let url = m[0];
     const tail = url.match(/[.,!?;:)\]}'"]+$/)?.[0] ?? '';
     if (tail) url = url.slice(0, url.length - tail.length);
@@ -67,7 +122,7 @@ function LinkText({ text }: { text: string | null | undefined }) {
     if (tail) nodes.push(tail);
     last = start + m[0].length;
   }
-  if (last < text.length) nodes.push(text.slice(last));
+  if (last < text.length) pushPlain(text.slice(last));
   return <>{nodes}</>;
 }
 
@@ -395,6 +450,7 @@ export function MessageBubble({
   const isAgent =
     message.sender_type === 'agent' || message.sender_type === 'bot';
   const time = format(new Date(message.created_at), 'HH:mm');
+  const { openProfile } = useMentions();
 
   // Row alignment + width cap are owned by <MessageActions> so its hover
   // group matches the bubble's content area, not the full row.
@@ -429,7 +485,23 @@ export function MessageBubble({
         )}
         {!isAgent && message.author_name && (
           <div className="text-primary mb-0.5 text-xs font-semibold">
-            {message.author_name}
+            {message.author_phone ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openProfile({
+                    phone: message.author_phone ?? null,
+                    name: message.author_name,
+                  });
+                }}
+                className="underline-offset-2 hover:underline"
+              >
+                {message.author_name}
+              </button>
+            ) : (
+              message.author_name
+            )}
           </div>
         )}
         <MessageContent message={message} />

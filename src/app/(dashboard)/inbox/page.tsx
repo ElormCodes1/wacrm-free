@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -17,6 +17,7 @@ import { useRealtime } from '@/hooks/use-realtime';
 import { ConversationList } from '@/components/inbox/conversation-list';
 import { MessageThread } from '@/components/inbox/message-thread';
 import { ContactSidebar } from '@/components/inbox/contact-sidebar';
+import { MentionProvider } from '@/components/inbox/mention-context';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { toast } from 'sonner';
 import { WifiOff } from 'lucide-react';
@@ -65,6 +66,68 @@ export default function InboxPage() {
   // Mobile/tablet (<xl): the static contact panel is hidden, so it opens
   // in a drawer instead. Separate from the desktop open/collapse state.
   const [mobileContactOpen, setMobileContactOpen] = useState(false);
+
+  /**
+   * A profile opened from inside the thread — an @mention or a group
+   * member's name. Kept separate from `activeContact` so the conversation
+   * underneath doesn't change: you're peeking at someone, not switching to
+   * them. Cleared by the panel's back control, and whenever the
+   * conversation changes.
+   */
+  const [peekContact, setPeekContact] = useState<Contact | null>(null);
+  const [peekConversationId, setPeekConversationId] = useState<string | null>(
+    null
+  );
+  const [peekLoading, setPeekLoading] = useState(false);
+
+  // ---- @mention resolution -------------------------------------------
+  // Mentions arrive as `@<token>` in the text plus a per-message token →
+  // phone map (webhook, migration 057). Resolving names once here — rather
+  // than per bubble — means the same person mentioned ten times costs one
+  // lookup, and it keeps MessageThread's JSX untouched.
+  const mentionIndex = useMemo(() => {
+    const index = new Map<string, string | null>();
+    for (const m of messages) {
+      for (const mention of m.mentions ?? []) {
+        if (!index.has(mention.token)) index.set(mention.token, mention.phone);
+      }
+    }
+    return index;
+  }, [messages]);
+
+  const [mentionNames, setMentionNames] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const phones = [
+      ...new Set([...mentionIndex.values()].filter(Boolean)),
+    ] as string[];
+    if (!phones.length) {
+      setMentionNames({});
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const supabase = createClient();
+      // Matched on the last 8 digits, the same way contact dedupe does —
+      // stored numbers vary by country prefix and punctuation.
+      const suffixes = phones.map((p) => (p.length >= 8 ? p.slice(-8) : p));
+      const { data } = await supabase
+        .from("contacts")
+        .select("name, phone")
+        .or(suffixes.map((sfx) => `phone.like.%${sfx}`).join(","));
+      if (cancelled || !data) return;
+      const byPhone: Record<string, string> = {};
+      for (const phone of phones) {
+        const suffix = phone.length >= 8 ? phone.slice(-8) : phone;
+        const hit = data.find((c) => (c.phone ?? "").endsWith(suffix));
+        if (hit?.name) byPhone[phone] = hit.name;
+      }
+      setMentionNames(byPhone);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [mentionIndex]);
   useEffect(() => {
     try {
       const stored = localStorage.getItem(CONTACT_PANEL_STORAGE_KEY);
@@ -464,6 +527,75 @@ export default function InboxPage() {
     [activeConversation?.id]
   );
 
+  /**
+   * Resolve a phone to a contact and show it in the panel. The person
+   * clicked is frequently not in the CRM yet — that's normal for a group
+   * member — so the route creates them; the alternative is a dead link on
+   * exactly the people you most need to look up.
+   */
+  const handleOpenProfile = useCallback(
+    async (target: { phone: string | null; name?: string | null }) => {
+      if (!target.phone) {
+        toast.error('That mention has no phone number yet');
+        return;
+      }
+      setPeekLoading(true);
+      setMobileContactOpen(true);
+      setContactPanelOpen(true);
+      try {
+        const res = await fetch('/api/contacts/resolve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phone: target.phone,
+            name: target.name ?? null,
+          }),
+        });
+        const json = await res.json();
+        if (!res.ok)
+          throw new Error(json.error ?? 'Could not open that profile');
+        setPeekContact(json.contact as Contact);
+        setPeekConversationId(json.conversation_id as string);
+      } catch (err) {
+        setMobileContactOpen(false);
+        toast.error(
+          err instanceof Error ? err.message : 'Could not open that profile'
+        );
+      } finally {
+        setPeekLoading(false);
+      }
+    },
+    []
+  );
+
+  /** Leave the peeked profile and go back to the conversation's own contact. */
+  const handleClosePeek = useCallback(() => {
+    setPeekContact(null);
+    setPeekConversationId(null);
+  }, []);
+
+  // Switching conversations ends any peek: the panel belongs to whatever
+  // thread is open, and leaving a stale profile pinned there is how you
+  // end up adding a note to the wrong person.
+  useEffect(() => {
+    setPeekContact(null);
+    setPeekConversationId(null);
+  }, [activeConversation?.id]);
+
+  const mentionValue = useMemo(
+    () => ({
+      // Falls back through contact name → phone → raw token, so an
+      // unresolved mention still reads as a person rather than vanishing.
+      labelFor: (token: string) => {
+        const phone = mentionIndex.get(token) ?? null;
+        return (phone && mentionNames[phone]) || phone || token;
+      },
+      phoneFor: (token: string) => mentionIndex.get(token) ?? null,
+      openProfile: handleOpenProfile,
+    }),
+    [mentionIndex, mentionNames, handleOpenProfile],
+  );
+
   const handleSelectConversation = useCallback(
     (conv: Conversation) => {
       // Re-clicking the already-active conversation would clear the
@@ -503,6 +635,38 @@ export default function InboxPage() {
     },
     [activeConversation?.id, router]
   );
+
+  /**
+   * Jump to the peeked person's own 1:1 thread.
+   *
+   * The conversation may not be in the loaded list — resolve just created
+   * it, or it's far down — so hydrate first, then route through the same
+   * `?c=<id>` deep link the rest of the app uses. Selecting it directly
+   * would need the row, which is exactly what we might not have.
+   */
+  const handleMessagePeek = useCallback(() => {
+    if (!peekConversationId) return;
+    const convId = peekConversationId;
+    setPeekContact(null);
+    setPeekConversationId(null);
+    setMobileContactOpen(false);
+
+    const existing = conversations.find((c) => c.id === convId);
+    if (existing) {
+      handleSelectConversation(existing);
+      return;
+    }
+    // Let the deep-link handler adopt it once the list has the row.
+    autoSelectedForDeepLinkRef.current = null;
+    void hydrateConversation(convId);
+    router.replace(`/inbox?c=${convId}`, { scroll: false });
+  }, [
+    peekConversationId,
+    conversations,
+    handleSelectConversation,
+    hydrateConversation,
+    router,
+  ]);
 
   // Mobile "back" — deselect the conversation so the list pane comes
   // back. Also clears the ?c= param so a refresh lands on the list
@@ -624,22 +788,24 @@ export default function InboxPage() {
             hasActiveConv ? 'flex' : 'hidden lg:flex'
           )}
         >
-          <MessageThread
-            conversation={activeConversation}
-            contact={activeContact}
-            messages={messages}
-            onMessagesLoaded={handleMessagesLoaded}
-            onNewMessage={handleNewMessage}
-            onUpdateMessage={handleUpdateMessage}
-            onStatusChange={handleStatusChange}
-            onAssignChange={handleAssignChange}
-            onBack={handleCloseConversation}
-            resyncToken={resyncToken}
-            onRefresh={handleManualRefresh}
-            contactPanelOpen={contactPanelOpen}
-            onToggleContactPanel={handleToggleContactPanel}
-            onOpenContactSheet={() => setMobileContactOpen(true)}
-          />
+          <MentionProvider value={mentionValue}>
+            <MessageThread
+              conversation={activeConversation}
+              contact={activeContact}
+              messages={messages}
+              onMessagesLoaded={handleMessagesLoaded}
+              onNewMessage={handleNewMessage}
+              onUpdateMessage={handleUpdateMessage}
+              onStatusChange={handleStatusChange}
+              onAssignChange={handleAssignChange}
+              onBack={handleCloseConversation}
+              resyncToken={resyncToken}
+              onRefresh={handleManualRefresh}
+              contactPanelOpen={contactPanelOpen}
+              onToggleContactPanel={handleToggleContactPanel}
+              onOpenContactSheet={() => setMobileContactOpen(true)}
+            />
+          </MentionProvider>
         </div>
 
         {/* Right panel: Contact sidebar — desktop only, and only when the
@@ -649,8 +815,12 @@ export default function InboxPage() {
         {contactPanelOpen && (
           <div className="hidden xl:block">
             <ContactSidebar
-              contact={activeContact}
+              contact={peekContact ?? activeContact}
               onGroupResolved={handleGroupResolved}
+              peeking={!!peekContact || peekLoading}
+              onClosePeek={handleClosePeek}
+              onMessage={peekConversationId ? handleMessagePeek : undefined}
+              loading={peekLoading}
             />
           </div>
         )}
@@ -663,8 +833,12 @@ export default function InboxPage() {
         <SheetContent side="right" className="w-70 max-w-[88vw] p-0 xl:hidden">
           <SheetTitle className="sr-only">Contact details</SheetTitle>
           <ContactSidebar
-            contact={activeContact}
+            contact={peekContact ?? activeContact}
             onGroupResolved={handleGroupResolved}
+            peeking={!!peekContact || peekLoading}
+            onClosePeek={handleClosePeek}
+            onMessage={peekConversationId ? handleMessagePeek : undefined}
+            loading={peekLoading}
           />
         </SheetContent>
       </Sheet>
