@@ -161,7 +161,9 @@ async function processEvolutionEvent(body: EvolutionWebhookBody) {
     case 'messages.upsert':
     case 'messages.set':
       for (const msg of asMessages(body.data)) {
-        await handleInboundMessage(instance, msg)
+        // messages.set is the reconnect backlog, which re-delivers things
+        // we may already hold. Only that path pays for a dedupe check.
+        await handleInboundMessage(instance, msg, event === 'messages.set')
       }
       break
 
@@ -722,7 +724,7 @@ async function replayPendingLidEvents(instanceName: string, lid: string): Promis
           .limit(1)
           .maybeSingle()
         if (!already) {
-          await handleInboundMessage(instanceName, row.payload)
+          await handleInboundMessage(instanceName, row.payload, true)
         }
         // Delete only on success; a throw leaves the row for another pass.
         await supabaseAdmin().from('pending_lid_events').delete().eq('id', row.id)
@@ -749,7 +751,13 @@ async function replayPendingLidEvents(instanceName: string, lid: string): Promis
 // ============================================================
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function handleInboundMessage(instanceName: string, data: any) {
+async function handleInboundMessage(
+  instanceName: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  data: any,
+  /** Replayed backlog rather than a live message — dedupe before insert. */
+  isHistory = false,
+) {
   const key = data?.key
   if (!key?.id || !key.remoteJid) return
 
@@ -810,7 +818,15 @@ async function handleInboundMessage(instanceName: string, data: any) {
     wa_id: jidToPhone(jid),
   }
 
-  await processMessage(message, contact, config.account_id, config.user_id, instanceName, config.id)
+  await processMessage(
+    message,
+    contact,
+    config.account_id,
+    config.user_id,
+    instanceName,
+    config.id,
+    isHistory,
+  )
 }
 
 /**
@@ -1574,7 +1590,21 @@ async function processMessage(
   configOwnerUserId: string,
   instanceName: string,
   whatsappConfigId?: string,
+  isHistory = false,
 ) {
+  // A replayed backlog message may already be in the thread. The live path
+  // deliberately skips this lookup — it would be a round trip on every
+  // inbound message to guard against a case that only arises on reconnect.
+  if (isHistory) {
+    const { data: existing } = await supabaseAdmin()
+      .from('messages')
+      .select('id')
+      .eq('message_id', message.id)
+      .limit(1)
+      .maybeSingle()
+    if (existing) return
+  }
+
   const senderPhone = normalizePhone(message.from)
   const contactName = contact.profile.name
 

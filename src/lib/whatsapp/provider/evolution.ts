@@ -313,6 +313,11 @@ export const DEFAULT_WEBHOOK_EVENTS = [
   'QRCODE_UPDATED',
   'CONNECTION_UPDATE',
   'MESSAGES_UPSERT',
+  // Backlog. On reconnect WhatsApp replays what was missed under this
+  // event, not MESSAGES_UPSERT — so without it, every message sent while
+  // the socket was down is lost even though the gateway stored it. The
+  // webhook dedupes history by message id (see processMessage).
+  'MESSAGES_SET',
   'MESSAGES_UPDATE',
   // Status view receipts (who viewed our status). Requires the patched
   // Evolution image — stock Evolution never emits this event.
