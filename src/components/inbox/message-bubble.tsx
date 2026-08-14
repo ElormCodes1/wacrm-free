@@ -20,6 +20,7 @@ import {
   Star,
   CalendarClock,
   Pin,
+  Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ReplyQuote } from "./reply-quote";
@@ -97,6 +98,39 @@ function MediaUnavailable({ label }: { label: string }) {
       <ImageOff className="h-4 w-4 shrink-0 text-muted-foreground" />
       <span>{label} unavailable</span>
     </div>
+  );
+}
+
+/**
+ * Shown while the webhook is still pulling the file off WhatsApp. The
+ * message bubble lands first (see the media backfill in the webhook
+ * route); a Realtime UPDATE swaps this for the real media once it's up.
+ */
+function MediaPending({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-2 rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+      <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
+      <span>Downloading {label.toLowerCase()}…</span>
+    </div>
+  );
+}
+
+/**
+ * Which placeholder stands in for absent media. Rows written before
+ * media_status existed have it NULL, and for those a missing URL still
+ * means "unavailable" — so only an explicit 'pending' shows the spinner.
+ */
+function MediaFallback({
+  message,
+  label,
+}: {
+  message: Message;
+  label: string;
+}) {
+  return message.media_status === "pending" ? (
+    <MediaPending label={label} />
+  ) : (
+    <MediaUnavailable label={label} />
   );
 }
 
@@ -191,7 +225,7 @@ function MessageContent({ message }: { message: Message }) {
           {message.media_url ? (
             <MediaImage url={message.media_url} alt="Shared image" />
           ) : (
-            <MediaUnavailable label="Image" />
+            <MediaFallback message={message} label="Image" />
           )}
           {message.content_text && (
             <p className="mt-1 whitespace-pre-wrap break-words text-sm">
@@ -211,7 +245,7 @@ function MessageContent({ message }: { message: Message }) {
               className="max-h-64 max-w-60 rounded-lg"
             />
           ) : (
-            <MediaUnavailable label="Video" />
+            <MediaFallback message={message} label="Video" />
           )}
           {message.content_text && (
             <p className="mt-1 whitespace-pre-wrap break-words text-sm">
@@ -227,14 +261,19 @@ function MessageContent({ message }: { message: Message }) {
           {message.media_url ? (
             <audio src={message.media_url} controls className="max-w-60" />
           ) : (
-            <MediaUnavailable label="Audio" />
+            <MediaFallback message={message} label="Audio" />
           )}
         </div>
       );
 
     case "document":
       if (!message.media_url) {
-        return <MediaUnavailable label={message.content_text || "Document"} />;
+        return (
+          <MediaFallback
+            message={message}
+            label={message.content_text || "Document"}
+          />
+        );
       }
       return (
         <a

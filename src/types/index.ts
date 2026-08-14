@@ -291,6 +291,14 @@ export interface Message {
   content_type: ContentType;
   content_text?: string;
   media_url?: string;
+  /**
+   * Inbound media is fetched *after* the message row is inserted, so the
+   * bubble appears immediately and the file fills in over Realtime. This
+   * disambiguates the gap: 'pending' means still downloading (show a
+   * placeholder), 'failed' means give up and show "unavailable". NULL on
+   * non-media messages and on rows predating the split.
+   */
+  media_status?: "pending" | "ready" | "failed" | null;
   template_name?: string;
   message_id?: string;
   status: MessageStatus;

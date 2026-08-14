@@ -374,25 +374,30 @@ async function handleGroupMessage(instanceName: string, data: any) {
   const authorName = key.fromMe ? null : data.pushName || authorPhone || null
 
   const message = adaptMessage(data)
-  const { contentText, mediaUrl } = await parseMessageContent(message, instanceName)
+  const { contentText, mediaPending } = describeMessageContent(message)
   const contentType = GROUP_CONTENT_TYPES.has(message.type)
     ? message.type
     : message.type === 'sticker'
       ? 'image'
       : 'text'
 
-  const { error: insErr } = await supabaseAdmin().from('messages').insert({
-    conversation_id: convResult.conversation.id,
-    sender_type: key.fromMe ? 'agent' : 'customer',
-    content_type: contentType,
-    content_text: contentText,
-    media_url: mediaUrl,
-    message_id: key.id,
-    author_name: authorName,
-    author_phone: authorPhone,
-    status: key.fromMe ? 'sent' : 'delivered',
-    created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),
-  })
+  const { data: insertedRow, error: insErr } = await supabaseAdmin()
+    .from('messages')
+    .insert({
+      conversation_id: convResult.conversation.id,
+      sender_type: key.fromMe ? 'agent' : 'customer',
+      content_type: contentType,
+      content_text: contentText,
+      media_url: null,
+      media_status: mediaPending ? 'pending' : null,
+      message_id: key.id,
+      author_name: authorName,
+      author_phone: authorPhone,
+      status: key.fromMe ? 'sent' : 'delivered',
+      created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),
+    })
+    .select('id')
+    .single()
   if (insErr) {
     console.error('Error inserting group message:', insErr)
     return
@@ -412,6 +417,16 @@ async function handleGroupMessage(instanceName: string, data: any) {
       updated_at: new Date().toISOString(),
     })
     .eq('id', convResult.conversation.id)
+
+  if (mediaPending) {
+    await backfillMessageMedia({
+      rowId: insertedRow.id,
+      instanceName,
+      rawMessage: message._raw,
+      messageId: message.id,
+      fallbackMime: fallbackMimeFor(message),
+    })
+  }
 }
 
 // ============================================================
@@ -609,7 +624,7 @@ async function handleOutboundEcho(instanceName: string, data: any, resolvedJid: 
   if (!convResult) return
 
   const message = adaptMessage(data)
-  const { contentText, mediaUrl } = await parseMessageContent(message, instanceName)
+  const { contentText, mediaPending } = describeMessageContent(message)
   const ALLOWED = new Set([
     'text', 'image', 'document', 'audio', 'video', 'location', 'contact', 'poll',
   ])
@@ -619,16 +634,26 @@ async function handleOutboundEcho(instanceName: string, data: any, resolvedJid: 
       ? 'image'
       : 'text'
 
-  await supabaseAdmin().from('messages').insert({
-    conversation_id: convResult.conversation.id,
-    sender_type: 'agent',
-    content_type: contentType,
-    content_text: contentText,
-    media_url: mediaUrl,
-    message_id: key.id,
-    status: 'sent',
-    created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),
-  })
+  const { data: insertedRow, error: insErr } = await supabaseAdmin()
+    .from('messages')
+    .insert({
+      conversation_id: convResult.conversation.id,
+      sender_type: 'agent',
+      content_type: contentType,
+      content_text: contentText,
+      media_url: null,
+      media_status: mediaPending ? 'pending' : null,
+      message_id: key.id,
+      status: 'sent',
+      created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),
+    })
+    .select('id')
+    .single()
+  if (insErr) {
+    console.error('Error inserting outbound echo:', insErr)
+    return
+  }
+
   await supabaseAdmin()
     .from('conversations')
     .update({
@@ -637,6 +662,16 @@ async function handleOutboundEcho(instanceName: string, data: any, resolvedJid: 
       updated_at: new Date().toISOString(),
     })
     .eq('id', convResult.conversation.id)
+
+  if (mediaPending) {
+    await backfillMessageMedia({
+      rowId: insertedRow.id,
+      instanceName,
+      rawMessage: message._raw,
+      messageId: message.id,
+      fallbackMime: fallbackMimeFor(message),
+    })
+  }
 }
 
 // ============================================================
@@ -1349,9 +1384,7 @@ async function processMessage(
     return
   }
 
-  const { contentText, mediaUrl, mediaType, interactiveReplyId } =
-    await parseMessageContent(message, instanceName)
-  void mediaType
+  const { contentText, mediaPending, interactiveReplyId } = describeMessageContent(message)
 
   let replyToInternalId: string | null = null
   if (message.context?.id) {
@@ -1377,23 +1410,48 @@ async function processMessage(
     .eq('sender_type', 'customer')
   const isFirstInboundMessage = (priorCustomerMsgCount ?? 0) === 0
 
-  const { error: msgError } = await supabaseAdmin().from('messages').insert({
-    conversation_id: conversation.id,
-    sender_type: 'customer',
-    content_type: contentType,
-    content_text: contentText,
-    media_url: mediaUrl,
-    message_id: message.id,
-    status: 'delivered',
-    created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),
-    reply_to_message_id: replyToInternalId,
-    interactive_reply_id: interactiveReplyId,
-  })
+  // Insert first, fetch media after. `.select('id')` costs no extra round
+  // trip and gives the backfill an unambiguous row to target.
+  const { data: insertedRow, error: msgError } = await supabaseAdmin()
+    .from('messages')
+    .insert({
+      conversation_id: conversation.id,
+      sender_type: 'customer',
+      content_type: contentType,
+      content_text: contentText,
+      media_url: null,
+      media_status: mediaPending ? 'pending' : null,
+      message_id: message.id,
+      status: 'delivered',
+      created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),
+      reply_to_message_id: replyToInternalId,
+      interactive_reply_id: interactiveReplyId,
+    })
+    .select('id')
+    .single()
 
   if (msgError) {
     console.error('Error inserting message:', msgError)
     return
   }
+
+  // Kick the media fetch off now so it overlaps the conversation update,
+  // flows and automations below — none of which read media_url. It is
+  // awaited before this function returns (see the end of processMessage),
+  // so `after()` still keeps the process alive until it lands. The catch
+  // is attached here, at creation, so a rejection can never surface as an
+  // unhandled rejection during the awaits in between.
+  const mediaBackfill = mediaPending
+    ? backfillMessageMedia({
+        rowId: insertedRow.id,
+        instanceName,
+        rawMessage: message._raw,
+        messageId: message.id,
+        fallbackMime: fallbackMimeFor(message),
+      }).catch((err) =>
+        console.error('[webhook] media backfill failed:', err instanceof Error ? err.message : err),
+      )
+    : null
 
   const { error: convError } = await supabaseAdmin()
     .from('conversations')
@@ -1472,6 +1530,11 @@ async function processMessage(
     content_type: contentType,
     text: contentText,
   })
+
+  // Settle the media fetch started right after the INSERT. By now it has
+  // had the whole flow/automation stage to run in, so this is usually
+  // already resolved.
+  if (mediaBackfill) await mediaBackfill
 }
 
 // ============================================================
@@ -1528,53 +1591,90 @@ async function storeInboundMedia(
   }
 }
 
-async function parseMessageContent(
-  message: WhatsAppMessage,
-  instanceName: string,
-): Promise<{
+/**
+ * Backfill a message row's media after it has already been inserted.
+ *
+ * The download from Evolution plus the storage upload is the slowest part
+ * of inbound processing — a video can take tens of seconds — so it must
+ * never sit in front of the INSERT. The row goes in with
+ * `media_status: 'pending'`, this runs afterwards, and the resulting
+ * UPDATE reaches the open thread over Realtime.
+ *
+ * Awaited by callers (never detached): we're inside `after()`, and a
+ * floating promise can be frozen before it writes.
+ */
+async function backfillMessageMedia(args: {
+  rowId: string
+  instanceName: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  rawMessage: any
+  messageId: string
+  fallbackMime?: string
+}): Promise<void> {
+  const { rowId, instanceName, rawMessage, messageId, fallbackMime } = args
+  const { url } = await storeInboundMedia(instanceName, rawMessage, messageId, fallbackMime)
+  const { error } = await supabaseAdmin()
+    .from('messages')
+    .update({
+      media_url: url,
+      media_status: url ? 'ready' : 'failed',
+    })
+    .eq('id', rowId)
+  if (error) console.error('[webhook] media backfill update failed:', error.message)
+}
+
+/** The mime WhatsApp advertised for a media message, used as a fallback. */
+function fallbackMimeFor(message: WhatsAppMessage): string | undefined {
+  switch (message.type) {
+    case 'image':
+      return message.image?.mime_type
+    case 'video':
+      return message.video?.mime_type
+    case 'document':
+      return message.document?.mime_type
+    case 'audio':
+      return message.audio?.mime_type
+    case 'sticker':
+      return message.sticker?.mime_type
+    default:
+      return undefined
+  }
+}
+
+/**
+ * Everything about a message that can be known without a network call —
+ * the caption/body, whether media needs fetching, and any interactive
+ * reply id. Deliberately synchronous so the INSERT never waits on media.
+ */
+function describeMessageContent(message: WhatsAppMessage): {
   contentText: string | null
-  mediaUrl: string | null
-  mediaType: string | null
+  mediaPending: boolean
   interactiveReplyId: string | null
-}> {
+} {
   const empty = {
     contentText: null,
-    mediaUrl: null,
-    mediaType: null,
+    mediaPending: false,
     interactiveReplyId: null,
   }
-
-  const store = (mime?: string) => storeInboundMedia(instanceName, message._raw, message.id, mime)
 
   switch (message.type) {
     case 'text':
       return { ...empty, contentText: message.text?.body || null }
 
-    case 'image': {
-      const { url, mime } = await store(message.image?.mime_type)
-      return { ...empty, contentText: message.image?.caption || null, mediaUrl: url, mediaType: mime }
-    }
-    case 'video': {
-      const { url, mime } = await store(message.video?.mime_type)
-      return { ...empty, contentText: message.video?.caption || null, mediaUrl: url, mediaType: mime }
-    }
-    case 'document': {
-      const { url, mime } = await store(message.document?.mime_type)
+    case 'image':
+      return { ...empty, contentText: message.image?.caption || null, mediaPending: true }
+    case 'video':
+      return { ...empty, contentText: message.video?.caption || null, mediaPending: true }
+    case 'document':
       return {
         ...empty,
         contentText: message.document?.caption || message.document?.filename || null,
-        mediaUrl: url,
-        mediaType: mime,
+        mediaPending: true,
       }
-    }
-    case 'audio': {
-      const { url, mime } = await store(message.audio?.mime_type)
-      return { ...empty, mediaUrl: url, mediaType: mime }
-    }
-    case 'sticker': {
-      const { url, mime } = await store(message.sticker?.mime_type)
-      return { ...empty, mediaUrl: url, mediaType: mime }
-    }
+    case 'audio':
+      return { ...empty, mediaPending: true }
+    case 'sticker':
+      return { ...empty, mediaPending: true }
 
     case 'location':
       if (message.location) {
