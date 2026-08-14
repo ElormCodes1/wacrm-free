@@ -2,7 +2,10 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import {
   connectInstance,
-  getConnectionState,
+  isInstanceAlive,
+  clearAliveCache,
+  restartInstance,
+  logoutInstance,
 } from '@/lib/whatsapp/provider/evolution'
 
 /**
@@ -49,8 +52,13 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Number not found' }, { status: 404 })
     }
 
-    const state = await getConnectionState(config.instance_name)
-    if (state === 'open') {
+    // Probe rather than trust getConnectionState. It reports the gateway's
+    // belief, which stays "open" through a dead socket — so this route used
+    // to answer "already connected", write `connected` back over the honest
+    // state, and refuse to issue a QR. The one screen for fixing a dead
+    // line was the one screen that insisted nothing was wrong.
+    const alive = await isInstanceAlive(config.instance_name, { force: true })
+    if (alive) {
       await supabase
         .from('whatsapp_config')
         .update({
@@ -60,12 +68,42 @@ export async function GET(request: Request) {
           updated_at: new Date().toISOString(),
         })
         .eq('id', numberId)
-      return NextResponse.json({ state })
+      return NextResponse.json({ state: 'open' })
+    }
+
+    // Not alive. Record that before anything else, so the UI stops showing
+    // a dead line as connected even if the reconnect below fails.
+    await supabase
+      .from('whatsapp_config')
+      .update({
+        connection_state: 'close',
+        status: 'disconnected',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', numberId)
+
+    // Evolution won't emit a QR while it still believes it's connected, so
+    // clear that belief first: restart the socket, and log out if it comes
+    // back still claiming to be open. Both are best-effort — the connect
+    // call below is the thing that has to succeed.
+    try {
+      await restartInstance(config.instance_name)
+      clearAliveCache(config.instance_name)
+      await new Promise((r) => setTimeout(r, 3000))
+      if (!(await isInstanceAlive(config.instance_name, { force: true }))) {
+        try {
+          await logoutInstance(config.instance_name)
+        } catch {
+          /* a dead socket can't deliver a logout; the connect still may work */
+        }
+      }
+    } catch {
+      /* fall through to connect */
     }
 
     const qrcode = await connectInstance({ instanceName: config.instance_name })
     return NextResponse.json({
-      state,
+      state: 'close',
       qrcode: {
         base64: qrcode.base64 ?? null,
         code: qrcode.code ?? null,
