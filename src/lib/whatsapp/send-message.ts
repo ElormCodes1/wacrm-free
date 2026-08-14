@@ -243,9 +243,17 @@ export async function sendMessageToConversation(
   // Groups are addressed by "<groupId>@g.us"; 1:1 chats by validated
   // digits. Group ids aren't E.164, so skip phone validation for them.
   const isGroup = contact.is_group === true;
+  const lid = (contact as { lid?: string | null }).lid ?? null;
   let toDigits: string;
   if (isGroup) {
     toDigits = `${contact.phone.replace(/\D/g, '')}@g.us`;
+  } else if (lid) {
+    // A contact we only know by LID (059). Its `phone` holds the LID's
+    // digits to satisfy NOT NULL — those are NOT a phone number, and
+    // validating or dialling them would send to a stranger's number that
+    // merely happens to have the same digits. The gateway passes an `@lid`
+    // address through untouched, so send to it directly.
+    toDigits = lid;
   } else {
     const sanitizedPhone = sanitizePhoneForMeta(contact.phone);
     if (!isValidE164(sanitizedPhone)) {
@@ -359,7 +367,11 @@ export async function sendMessageToConversation(
   const isFirstMessage = (priorMessageCount ?? 0) === 0;
 
   // Groups have no single number to validate — skip the WhatsApp check.
-  if (isFirstMessage && !isGroup) {
+  // LID-only contacts are skipped too: the check takes a phone number, and
+  // theirs is a placeholder holding the LID's digits. Running it would look
+  // up an unrelated number and, on a definitive `false`, block a send to a
+  // chat that demonstrably exists — we are replying to their message.
+  if (isFirstMessage && !isGroup && !lid) {
     const onWa = await isOnWhatsApp(instanceName, toDigits);
     // Cache a definitive result on the contact (drives the inbox badge).
     if (onWa === true || onWa === false) {

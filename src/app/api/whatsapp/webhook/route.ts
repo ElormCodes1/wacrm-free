@@ -692,6 +692,56 @@ async function resolveMentions(
   return mentions
 }
 
+/**
+ * Deliver a message from a chat whose phone number we cannot determine.
+ *
+ * Same pipeline as any inbound message, but the contact is keyed on the
+ * LID rather than a number. The thread appears in the inbox under the
+ * sender's WhatsApp name and can be replied to; if the number ever
+ * surfaces, the contact is updated in place.
+ */
+async function deliverUnresolvedLidMessage(
+  instanceName: string,
+  lidJid: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  data: any,
+  isHistory: boolean,
+): Promise<void> {
+  const config = await resolveConfig(instanceName)
+  if (!config) {
+    console.error('[webhook] no whatsapp_config for instance', instanceName)
+    return
+  }
+
+  const message = adaptMessage(data)
+  const pushName: string = data?.pushName || ''
+  const contactOutcome = await findOrCreateLidContact(
+    config.account_id,
+    config.user_id,
+    lidJid,
+    pushName,
+  )
+  if (!contactOutcome) return
+
+  console.log(
+    `[webhook] delivering LID-only message from ${pushName || lidJid} (${lidJid})`,
+  )
+
+  // from/wa_id carry the LID's digits — the contact is already resolved, so
+  // these are only used for logging and the contact's display fallback.
+  message.from = jidLocalPart(lidJid)
+  await processMessage(
+    message,
+    { profile: { name: pushName }, wa_id: jidLocalPart(lidJid) },
+    config.account_id,
+    config.user_id,
+    instanceName,
+    config.id,
+    isHistory,
+    contactOutcome,
+  )
+}
+
 // ============================================================
 // Unresolved-LID parking
 //
@@ -832,12 +882,22 @@ async function handleInboundMessage(
   const unresolvedLid = jid
   jid = (await resolveJid(instanceName, key)) ?? ''
   if (!jid) {
-    // Don't drop it. The binding usually turns up shortly — the next
-    // message we send to this chat carries it — so park the event and
-    // replay it then. Our own outbound is the one thing that can't wait
-    // (it's the message that would teach us), but it always resolves.
+    // No phone available from the chat, its history, or the group's member
+    // list — WhatsApp shares a number only once you have some history with
+    // someone, so for a stranger there may be none to find, ever.
+    //
+    // Parking used to be the end of the line here, which left a live
+    // conversation preserved but invisible. Deliver it against a
+    // LID-keyed contact instead: the thread is fully usable (an `@lid`
+    // address is sendable) and the real number can be merged in later if
+    // it ever surfaces. Fire-and-forget parking is kept only for the
+    // genuinely unusable case below.
+    if (unresolvedLid.endsWith('@lid') && !key.fromMe) {
+      await deliverUnresolvedLidMessage(instanceName, unresolvedLid, data, isHistory)
+      return
+    }
     console.error(
-      '[webhook] unresolved LID, parking message for replay:',
+      '[webhook] unresolved address, parking message for replay:',
       unresolvedLid,
       key.id,
     )
@@ -1643,6 +1703,12 @@ async function processMessage(
   instanceName: string,
   whatsappConfigId?: string,
   isHistory = false,
+  /**
+   * Pre-resolved contact, for callers that identified the sender by
+   * something other than a phone number (a LID-only chat). When given,
+   * the phone-based lookup below is skipped entirely.
+   */
+  presetContact?: ContactOutcome,
 ) {
   // A replayed backlog message may already be in the thread. The live path
   // deliberately skips this lookup — it would be a round trip on every
@@ -1660,12 +1726,9 @@ async function processMessage(
   const senderPhone = normalizePhone(message.from)
   const contactName = contact.profile.name
 
-  const contactOutcome = await findOrCreateContact(
-    accountId,
-    configOwnerUserId,
-    senderPhone,
-    contactName,
-  )
+  const contactOutcome =
+    presetContact ??
+    (await findOrCreateContact(accountId, configOwnerUserId, senderPhone, contactName))
   if (!contactOutcome) return
   const contactRecord = contactOutcome.contact
 
@@ -2186,6 +2249,77 @@ interface ContactOutcome {
    * null when there was nothing to write.
    */
   pendingWrites: Promise<void> | null
+}
+
+/**
+ * Find or create the contact for a chat we only know by LID.
+ *
+ * WhatsApp shares a number only once you have history with someone, so a
+ * stranger in a group may have no phone available from any source. Parking
+ * their messages keeps them safe but invisible, which is the wrong home for
+ * a conversation happening right now — WhatsApp itself shows these people
+ * by name and lets you reply, and so can we (createJid passes `@lid`
+ * through, so the chat is fully sendable).
+ *
+ * `phone` holds the LID's digits purely to satisfy NOT NULL and the
+ * uniqueness index; `lid` is the address. Never treat that phone as a
+ * number — see resolveSendTarget.
+ */
+async function findOrCreateLidContact(
+  accountId: string,
+  configOwnerUserId: string,
+  lidJid: string,
+  name: string,
+): Promise<ContactOutcome | null> {
+  const { data: existing } = await supabaseAdmin()
+    .from('contacts')
+    .select('*')
+    .eq('account_id', accountId)
+    .eq('lid', lidJid)
+    .limit(1)
+    .maybeSingle()
+  if (existing) {
+    const pendingWrites =
+      name && name !== existing.name
+        ? Promise.resolve(
+            supabaseAdmin()
+              .from('contacts')
+              .update({ name, updated_at: new Date().toISOString() })
+              .eq('id', existing.id),
+          )
+            .then(({ error }) => {
+              if (error) console.error('[webhook] lid contact rename failed:', error.message)
+            })
+            .catch(() => {})
+        : null
+    return { contact: existing, wasCreated: false, pendingWrites }
+  }
+
+  const placeholder = jidLocalPart(lidJid)
+  const { data: created, error } = await supabaseAdmin()
+    .from('contacts')
+    .insert({
+      account_id: accountId,
+      user_id: configOwnerUserId,
+      phone: placeholder,
+      lid: lidJid,
+      name: name || placeholder,
+    })
+    .select()
+    .single()
+  if (!error && created) return { contact: created, wasCreated: true, pendingWrites: null }
+
+  // Lost a concurrent insert — resolve to the winner rather than dropping.
+  const { data: raced } = await supabaseAdmin()
+    .from('contacts')
+    .select('*')
+    .eq('account_id', accountId)
+    .eq('lid', lidJid)
+    .limit(1)
+    .maybeSingle()
+  if (raced) return { contact: raced, wasCreated: false, pendingWrites: null }
+  console.error('[webhook] could not create LID contact:', lidJid, error?.message)
+  return null
 }
 
 async function findOrCreateContact(
