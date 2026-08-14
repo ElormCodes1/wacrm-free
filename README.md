@@ -189,6 +189,36 @@ exempt from the middleware's session requirement — the same exemption the
 inbound webhook has. Without the token set, only signed-in users can call
 it.
 
+### Recovering messages the gateway kept but never sent
+
+Webhook delivery is at-most-once with no acknowledgement, and Evolution's
+history sync skips anything already in its own database:
+
+```ts
+if (messagesRepository?.has(m.key.id)) continue;   // baileys.service
+```
+
+`messagesRepository` is every message id it has stored, so the assumption
+is "stored ⇒ delivered". That is false whenever a delivery failed — the
+app was restarting, the socket died between the save and the emit, the
+payload was rejected. Such a message can never be delivered afterwards:
+the next sync skips it, and there is no retry. It sits in the gateway
+looking healthy while the inbox has never seen it.
+
+`POST /api/whatsapp/reconcile` compares the gateway's recent messages
+against the CRM and replays anything absent through the app's own webhook
+as `messages.set`, so it takes the identical path and dedupes. Re-running
+it is a no-op. Same auth as the health check:
+
+```bash
+*/15 * * * * curl -fsS -X POST \
+  -H "Authorization: Bearer $WHATSAPP_HEALTH_TOKEN" \
+  -H 'Content-Type: application/json' -d '{"pages":6}' \
+  https://your-domain/api/whatsapp/reconcile >/dev/null
+```
+
+`pages` is how far back to scan, 50 messages per page, newest first.
+
 ---
 
 ## Architecture

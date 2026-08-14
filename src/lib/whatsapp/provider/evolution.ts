@@ -2073,6 +2073,36 @@ export async function resolveLid(
   return resolveLidFromHistory(instanceName, lidJid)
 }
 
+/**
+ * A page of the instance's stored messages, newest first, across all chats.
+ *
+ * `where: {}` returns everything the gateway holds, paginated 50 at a time
+ * — which is what makes reconciliation cheap: the recent pages are the
+ * only ones that can contain an undelivered message worth recovering.
+ */
+export async function findMessagesPage(args: {
+  instanceName: string
+  page: number
+  offset?: number
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+}): Promise<any[]> {
+  try {
+    const data = await evolutionFetch<unknown>(
+      `/chat/findMessages/${encodeURIComponent(args.instanceName)}`,
+      {
+        method: 'POST',
+        body: { where: {}, page: args.page, offset: args.offset ?? 50 },
+      },
+    )
+    if (Array.isArray(data)) return data
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rec = (data as any)?.messages?.records ?? (data as any)?.records
+    return Array.isArray(rec) ? rec : []
+  } catch {
+    return []
+  }
+}
+
 /** Query stored messages for a chat (for history backfill). */
 export async function findMessages(args: {
   instanceName: string
