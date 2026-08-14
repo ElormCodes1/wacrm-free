@@ -269,6 +269,17 @@ export default function InboxPage() {
         return;
       }
 
+      // Probe-and-heal before reading state. The gateway's socket dies
+      // quietly — twice in ninety minutes on this instance — and reports
+      // "open" throughout, so the inbox goes silent with every indicator
+      // green. Opening the inbox is the natural moment to notice and fix
+      // that; the endpoint restarts anything it finds dead.
+      try {
+        await fetch('/api/whatsapp/health', { method: 'POST' });
+      } catch {
+        // Best effort: the read below still reports the truth.
+      }
+
       // Read live state via the API rather than whatsapp_config.status.
       // The stored column is only written when a connection.update event
       // is processed, so a state change missed during an outage leaves it

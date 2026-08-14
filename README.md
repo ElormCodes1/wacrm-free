@@ -165,6 +165,30 @@ buckets from those migrations.
 
 Messages now flow into the inbox in real time.
 
+### Keeping the socket alive
+
+The gateway's WhatsApp socket can die quietly: `connectionState` keeps
+reporting `open` while every socket operation fails with
+`428 Connection Closed`. Nothing looks wrong — messages simply stop
+arriving. `POST /api/whatsapp/health` probes each number for real (a
+lightweight `onWhatsApp` round-trip rather than the gateway's own belief),
+restarts any instance that fails, and writes the true state back.
+
+The inbox calls it on load, which covers normal use. To catch stalls while
+nobody has the app open, set `WHATSAPP_HEALTH_TOKEN` and run it on a
+schedule:
+
+```bash
+*/5 * * * * curl -fsS -X POST \
+  -H "Authorization: Bearer $WHATSAPP_HEALTH_TOKEN" \
+  https://your-domain/api/whatsapp/health >/dev/null
+```
+
+The endpoint authenticates itself (session **or** bearer token), so it is
+exempt from the middleware's session requirement — the same exemption the
+inbound webhook has. Without the token set, only signed-in users can call
+it.
+
 ---
 
 ## Architecture

@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { randomUUID } from 'crypto'
 import {
   createInstance,
-  getConnectionState,
+  isInstanceAlive,
   fetchInstance,
   logoutInstance,
   deleteInstance,
@@ -63,7 +63,11 @@ export async function GET() {
       let name: string | null = null
       if (row.instance_name) {
         try {
-          state = await getConnectionState(row.instance_name)
+          // getConnectionState reports the gateway's *belief*, which stays
+          // "open" through a dead socket — the failure that made a
+          // disconnected line look healthy. Probe it, then report.
+          const alive = await isInstanceAlive(row.instance_name)
+          state = alive ? 'open' : 'close'
           const info = await fetchInstance(row.instance_name)
           phone = info?.ownerJid ? jidToPhone(info.ownerJid) : null
           name = info?.profileName ?? null

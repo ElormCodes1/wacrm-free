@@ -546,6 +546,58 @@ export async function checkWhatsappNumbers(args: {
 }
 
 // ============================================================
+// Liveness
+//
+// `connectionState` cannot be trusted. Observed twice in ninety minutes on
+// a live instance: it reported "open" while every socket operation failed
+// with 428 "Connection Closed". It reflects what the gateway last decided
+// about the socket, not whether the socket can carry a request — so a
+// session that dies quietly reads as healthy indefinitely, and the CRM
+// silently stops receiving messages with every indicator green.
+//
+// The only honest test is to make the socket do something. `onWhatsApp`
+// is the cheapest round-trip available: no message is sent, nothing is
+// written, and a dead socket fails immediately rather than hanging.
+// ============================================================
+
+const aliveCache = new Map<string, { alive: boolean; at: number }>()
+const ALIVE_TTL_MS = 30_000
+
+/**
+ * Whether the instance's socket can actually carry a request.
+ *
+ * Cached briefly so callers on a hot path (a send, a page load) can ask
+ * freely without paying a WhatsApp round-trip each time. `force` skips the
+ * cache — the watchdog uses it, since a cached "alive" from 20 seconds ago
+ * is exactly what it exists to disbelieve.
+ */
+export async function isInstanceAlive(
+  instanceName: string,
+  opts: { force?: boolean; number?: string } = {},
+): Promise<boolean> {
+  const hit = aliveCache.get(instanceName)
+  if (!opts.force && hit && Date.now() - hit.at < ALIVE_TTL_MS) return hit.alive
+
+  let alive = false
+  try {
+    // Probing our own number keeps the query meaningless to anyone else.
+    const probe = opts.number ?? '000000000000'
+    const res = await checkWhatsappNumbers({ instanceName, numbers: [probe] })
+    alive = Array.isArray(res)
+  } catch {
+    alive = false
+  }
+  aliveCache.set(instanceName, { alive, at: Date.now() })
+  return alive
+}
+
+/** Drop a cached liveness verdict (after a restart, say). */
+export function clearAliveCache(instanceName?: string): void {
+  if (instanceName === undefined) aliveCache.clear()
+  else aliveCache.delete(instanceName)
+}
+
+// ============================================================
 // Profile pictures / presence / read receipts
 // ============================================================
 

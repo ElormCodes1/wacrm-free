@@ -24,7 +24,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   sendText,
   sendMedia,
-  getConnectionState,
+  isInstanceAlive,
   type EvolutionMediaKind,
 } from '@/lib/whatsapp/provider/evolution';
 import { isOnWhatsApp } from '@/lib/whatsapp/provider/number-check';
@@ -277,8 +277,8 @@ export async function sendMessageToConversation(
   // which is only written when a connection.update event is processed and
   // goes stale whenever one is missed.
   try {
-    const state = await getConnectionState(instanceName);
-    if (state !== 'open') {
+    const alive = await isInstanceAlive(instanceName);
+    if (!alive) {
       throw new SendMessageError(
         'whatsapp_not_configured',
         'The WhatsApp number this conversation is on is disconnected. ' +
