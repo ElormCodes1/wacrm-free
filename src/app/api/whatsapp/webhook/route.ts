@@ -14,6 +14,7 @@ import {
   resolveInstanceConfig,
   type InstanceConfig,
 } from '@/lib/whatsapp/provider/config'
+import { storageExtension } from '@/lib/whatsapp/media-naming'
 import { normalizePhone } from '@/lib/whatsapp/phone-utils'
 import { formatEventSummary } from '@/lib/whatsapp/event-summary'
 import { findExistingContact } from '@/lib/contacts/dedupe'
@@ -451,9 +452,7 @@ async function handleGroupMessage(instanceName: string, data: any) {
     await backfillMessageMedia({
       rowId: insertedRow.id,
       instanceName,
-      rawMessage: message._raw,
-      messageId: message.id,
-      fallbackMime: fallbackMimeFor(message),
+      message,
     })
   }
 }
@@ -814,9 +813,7 @@ async function handleOutboundEcho(instanceName: string, data: any, resolvedJid: 
     await backfillMessageMedia({
       rowId: insertedRow.id,
       instanceName,
-      rawMessage: message._raw,
-      messageId: message.id,
-      fallbackMime: fallbackMimeFor(message),
+      message,
     })
   }
 }
@@ -921,9 +918,13 @@ async function handleStatusBroadcast(instanceName: string, data: any) {
     contentText = message.text?.body || null
     backgroundColor = argbToHex(data.message?.extendedTextMessage?.backgroundArgb)
   } else {
+    // Statuses are images/videos/audio only — always rendered inline, so
+    // no attachment naming here.
     const mimeHint =
       message.image?.mime_type || message.video?.mime_type || message.audio?.mime_type
-    const { url } = await storeInboundMedia(instanceName, message._raw, message.id, mimeHint)
+    const { url } = await storeInboundMedia(instanceName, message._raw, message.id, {
+      fallbackMime: mimeHint,
+    })
     mediaUrl = url
     contentText = message.image?.caption || message.video?.caption || null
   }
@@ -1626,9 +1627,7 @@ async function processMessage(
     ? backfillMessageMedia({
         rowId: insertedRow.id,
         instanceName,
-        rawMessage: message._raw,
-        messageId: message.id,
-        fallbackMime: fallbackMimeFor(message),
+        message,
       }).catch((err) =>
         console.error('[webhook] media backfill failed:', err instanceof Error ? err.message : err),
       )
@@ -1724,19 +1723,6 @@ async function processMessage(
 // Media + content parsing
 // ============================================================
 
-const MIME_EXT: Record<string, string> = {
-  'image/jpeg': '.jpg',
-  'image/jpg': '.jpg',
-  'image/png': '.png',
-  'image/webp': '.webp',
-  'image/gif': '.gif',
-  'video/mp4': '.mp4',
-  'video/3gpp': '.3gp',
-  'audio/ogg': '.ogg',
-  'audio/mpeg': '.mp3',
-  'audio/mp4': '.m4a',
-  'application/pdf': '.pdf',
-}
 
 /**
  * Download an inbound media message via Evolution and store it in the
@@ -1747,14 +1733,24 @@ async function storeInboundMedia(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   rawMessage: any,
   messageId: string,
-  fallbackMime?: string,
+  opts: {
+    fallbackMime?: string
+    /** Sender's filename, when WhatsApp provided one (documents). */
+    fallbackName?: string
+    /** Serve with the original filename attached — documents only. */
+    asAttachment?: boolean
+  } = {},
 ): Promise<{ url: string | null; mime: string | null }> {
+  const { fallbackMime, fallbackName, asAttachment } = opts
   try {
     const media = await getBase64FromMediaMessage({ instanceName, message: rawMessage })
     if (!media?.base64) return { url: null, mime: fallbackMime ?? null }
+    // Keep the mime intact for Content-Type (`audio/ogg; codecs=opus` is
+    // valid and helps playback); only the extension lookup is normalised.
     const mime = media.mimetype || fallbackMime || 'application/octet-stream'
+    const fileName = media.fileName || fallbackName
     const buffer = Buffer.from(media.base64, 'base64')
-    const ext = MIME_EXT[mime] ?? ''
+    const ext = storageExtension(fileName, mime)
     const path = `inbound/${messageId}${ext}`
     const { error } = await supabaseAdmin()
       .storage.from('chat-media')
@@ -1763,7 +1759,12 @@ async function storeInboundMedia(
       console.error('[webhook] media upload failed:', error.message)
       return { url: null, mime }
     }
-    const { data } = supabaseAdmin().storage.from('chat-media').getPublicUrl(path)
+    // Documents are clicked to download, so hand back the sender's own
+    // filename rather than the message id. Images/video/audio render
+    // inline and deliberately get a plain URL.
+    const { data } = supabaseAdmin()
+      .storage.from('chat-media')
+      .getPublicUrl(path, asAttachment && fileName ? { download: fileName } : undefined)
     return { url: data.publicUrl, mime }
   } catch (err) {
     console.error(
@@ -1789,13 +1790,14 @@ async function storeInboundMedia(
 async function backfillMessageMedia(args: {
   rowId: string
   instanceName: string
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  rawMessage: any
-  messageId: string
-  fallbackMime?: string
+  message: WhatsAppMessage
 }): Promise<void> {
-  const { rowId, instanceName, rawMessage, messageId, fallbackMime } = args
-  const { url } = await storeInboundMedia(instanceName, rawMessage, messageId, fallbackMime)
+  const { rowId, instanceName, message } = args
+  const { url } = await storeInboundMedia(instanceName, message._raw, message.id, {
+    fallbackMime: fallbackMimeFor(message),
+    fallbackName: message.document?.filename,
+    asAttachment: message.type === 'document',
+  })
   const { error } = await supabaseAdmin()
     .from('messages')
     .update({
