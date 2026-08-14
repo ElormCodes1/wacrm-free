@@ -117,10 +117,25 @@ export async function POST(request: Request) {
     }
   }
 
+  // Read the body as text and parse it ourselves, so a parse failure can
+  // say what arrived. `request.json()` throwing gave us a bare 400 with no
+  // log line — and Evolution treats 4xx as unrecoverable ("Cancelando
+  // retentativas"), so every such message was dropped permanently and
+  // invisibly. Whatever else this is, it must never be silent again.
   let body: EvolutionWebhookBody
+  const raw = await request.text()
   try {
-    body = await request.json()
-  } catch {
+    body = JSON.parse(raw)
+  } catch (err) {
+    console.error(
+      '[webhook] could not parse body — MESSAGE DROPPED.',
+      'content-type:', request.headers.get('content-type'),
+      'content-length:', request.headers.get('content-length'),
+      'bytes read:', raw.length,
+      'error:', err instanceof Error ? err.message : err,
+    )
+    console.error('[webhook] body head:', raw.slice(0, 500))
+    console.error('[webhook] body tail:', raw.slice(-200))
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 

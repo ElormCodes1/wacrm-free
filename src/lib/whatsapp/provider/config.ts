@@ -101,7 +101,16 @@ export function appWebhookConfig(): WebhookConfig {
   return {
     url,
     events: [...DEFAULT_WEBHOOK_EVENTS],
-    base64: true,
+    // Do NOT embed media in the webhook payload.
+    //
+    // We never read it: inbound media is fetched separately with
+    // getBase64FromMediaMessage, which is also what lets the message row
+    // land before the file. Asking for it inline only inflated every
+    // media event by ~33% — and past ~7 MB of media the JSON exceeded the
+    // 10 MB request-body cap, so the route answered 400. Evolution treats
+    // 4xx as unrecoverable ("Cancelando retentativas") and dropped those
+    // messages permanently, with no row, no retry and no log.
+    base64: false,
     ...(secret ? { headers: { 'x-evolution-secret': secret } } : {}),
   }
 }
