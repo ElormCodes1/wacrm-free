@@ -1810,14 +1810,106 @@ export async function findContacts(instanceName: string): Promise<any[]> {
 // ============================================================
 // LID → phone resolution
 //
-// WhatsApp is migrating to opaque "LIDs". Calls (and some messages) are
-// addressed by `<lid>@lid` with no phone. Evolution's chat records expose
-// the real phone via `lastMessage.key.remoteJidAlt`, so we build a
-// LID→phone map from findChats and cache it briefly.
+// WhatsApp is migrating to opaque "LIDs": messages and calls arrive
+// addressed `<lid>@lid` with no phone number attached. The phone shows up
+// in a sibling field, `remoteJidAlt` — but ONLY on messages we send. An
+// inbound LID message carries `remoteJidAlt: null`.
+//
+// The original implementation read the phone off each chat's
+// `lastMessage.key.remoteJidAlt`, which is self-defeating for exactly the
+// case it exists to serve: an inbound message has no alt AND becomes that
+// chat's lastMessage, overwriting the one field being consulted. It
+// resolved only while one of our own messages happened to still be last —
+// 14 of 87 live chats — and silently dropped every inbound message in the
+// rest.
+//
+// So instead of deriving the map fresh each time, we accumulate it:
+//
+//   * `learnLid` records any pair we observe, from any event — including
+//     the outbound echoes that DO carry the alt.
+//   * the map is only ever added to. A LID→phone binding is stable, so
+//     forgetting one (as the old wholesale-refresh did every 5 minutes)
+//     can only ever lose information.
+//   * on a miss we scan the chat's message history, where the alt is
+//     recorded on past outbound messages, rather than just its last one.
 // ============================================================
 
-const lidCache = new Map<string, { map: Map<string, string>; ts: number }>()
-const LID_TTL_MS = 5 * 60 * 1000
+/** instance → (lid JID → phone JID). Append-only; never wholesale replaced. */
+const lidMap = new Map<string, Map<string, string>>()
+
+/** When findChats was last swept per instance (the sweep merges, not replaces). */
+const lidSweepAt = new Map<string, number>()
+const LID_SWEEP_TTL_MS = 5 * 60 * 1000
+
+function lidMapFor(instanceName: string): Map<string, string> {
+  let m = lidMap.get(instanceName)
+  if (!m) {
+    m = new Map<string, string>()
+    lidMap.set(instanceName, m)
+  }
+  return m
+}
+
+/**
+ * Record a LID→phone pair. Cheap and idempotent, so callers can fire it at
+ * every event without checking first. Ignores anything that isn't a real
+ * `@lid` → `@s.whatsapp.net` pair.
+ */
+export function learnLid(
+  instanceName: string,
+  lidJid: unknown,
+  phoneJid: unknown,
+): void {
+  if (typeof lidJid !== 'string' || typeof phoneJid !== 'string') return
+  if (!lidJid.endsWith('@lid') || !phoneJid.endsWith('@s.whatsapp.net')) return
+  lidMapFor(instanceName).set(lidJid, phoneJid)
+}
+
+/**
+ * Harvest every LID→phone pair reachable from a Baileys message key —
+ * both the chat address (`remoteJid`/`remoteJidAlt`) and, in groups, the
+ * sender (`participant`/`participantAlt`).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function learnLidsFromKey(instanceName: string, key: any): void {
+  if (!key) return
+  learnLid(instanceName, key.remoteJid, key.remoteJidAlt)
+  learnLid(instanceName, key.participant, key.participantAlt)
+}
+
+/** Merge (never replace) whatever findChats can currently tell us. */
+async function sweepLidsFromChats(instanceName: string): Promise<void> {
+  try {
+    const chats = await findChats(instanceName)
+    for (const c of chats) {
+      const rj = String(c.remoteJid ?? c.id ?? '')
+      learnLid(instanceName, rj, c.lastMessage?.key?.remoteJidAlt)
+    }
+  } catch {
+    /* leave what we already know intact */
+  }
+  lidSweepAt.set(instanceName, Date.now())
+}
+
+/**
+ * Last resort: read the chat's stored history and pull the phone off any
+ * message that carries it. Past outbound messages to this chat do, which
+ * is what makes this work where `lastMessage` alone fails.
+ */
+async function resolveLidFromHistory(
+  instanceName: string,
+  lidJid: string,
+): Promise<string | null> {
+  const msgs = await findMessages({ instanceName, remoteJid: lidJid, limit: 50 })
+  for (const m of msgs) {
+    const alt = m?.key?.remoteJidAlt
+    if (typeof alt === 'string' && alt.endsWith('@s.whatsapp.net')) {
+      learnLid(instanceName, lidJid, alt)
+      return alt
+    }
+  }
+  return null
+}
 
 /** Resolve a `<lid>@lid` JID to its `<phone>@s.whatsapp.net`, or null. */
 /**
@@ -1851,26 +1943,21 @@ export async function resolveLid(
   lidJid: string,
 ): Promise<string | null> {
   if (!lidJid.endsWith('@lid')) return lidJid
-  const now = Date.now()
-  let entry = lidCache.get(instanceName)
-  if (!entry || now - entry.ts > LID_TTL_MS) {
-    const map = new Map<string, string>()
-    try {
-      const chats = await findChats(instanceName)
-      for (const c of chats) {
-        const rj = String(c.remoteJid ?? c.id ?? '')
-        const alt = c.lastMessage?.key?.remoteJidAlt
-        if (rj.endsWith('@lid') && typeof alt === 'string' && alt.endsWith('@s.whatsapp.net')) {
-          map.set(rj, alt)
-        }
-      }
-    } catch {
-      /* leave map empty; caller treats as unresolved */
-    }
-    entry = { map, ts: now }
-    lidCache.set(instanceName, entry)
+
+  // 1. Already learned? A binding never changes, so this is authoritative.
+  const known = lidMapFor(instanceName).get(lidJid)
+  if (known) return known
+
+  // 2. Sweep findChats (throttled) and merge anything new.
+  const sweptAt = lidSweepAt.get(instanceName) ?? 0
+  if (Date.now() - sweptAt > LID_SWEEP_TTL_MS) {
+    await sweepLidsFromChats(instanceName)
+    const afterSweep = lidMapFor(instanceName).get(lidJid)
+    if (afterSweep) return afterSweep
   }
-  return entry.map.get(lidJid) ?? null
+
+  // 3. Dig through this chat's history for a message that carries the alt.
+  return resolveLidFromHistory(instanceName, lidJid)
 }
 
 /** Query stored messages for a chat (for history backfill). */

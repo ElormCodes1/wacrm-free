@@ -4,6 +4,8 @@ import {
   getBase64FromMediaMessage,
   jidToPhone,
   resolveLid,
+  learnLid,
+  learnLidsFromKey,
   findContactByJid,
   fetchGroupInfo,
   fetchInstance,
@@ -133,6 +135,20 @@ async function processEvolutionEvent(body: EvolutionWebhookBody) {
   const event = body.event
   const instance = body.instance
   if (!event || !instance) return
+
+  // Harvest LID→phone bindings from every event before dispatching, no
+  // matter which handler (if any) will deal with it. The pairing is only
+  // ever present on messages WE send, so the events that teach us are
+  // precisely the ones that need no resolving — including `send.message`,
+  // which has no handler at all. Learning here means an inbound message
+  // from the same chat resolves later without another network call.
+  // asMessages, not asArray: messages.upsert wraps its payload as
+  // `{ messages: [...] }`, and asArray would hand back that wrapper — an
+  // object with no `key` — so every binding would be missed.
+  for (const m of asMessages(body.data)) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    learnLidsFromKey(instance, (m as any)?.key)
+  }
 
   switch (event) {
     case 'messages.upsert':
@@ -539,6 +555,106 @@ function asMessages(data: any): any[] {
 }
 
 // ============================================================
+// Unresolved-LID parking
+//
+// An inbound `<id>@lid` message carries no phone number, and the binding
+// isn't always known yet. Rather than discard the message (the old
+// `if (!jid) return`), park the raw event and replay it once the binding
+// turns up — which the next outbound message to that chat supplies.
+// ============================================================
+
+/** Guard against a replay re-entering itself through a nested resolve. */
+const replayingLids = new Set<string>()
+
+async function parkUnresolvedLidEvent(
+  instanceName: string,
+  lid: string,
+  // NOT NULL in the table — handleInboundMessage bails before this when
+  // key.id is missing, so there is always one.
+  messageId: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  payload: any,
+): Promise<void> {
+  // onConflict on the partial unique index makes re-parking a no-op, so
+  // Evolution's webhook retries can't pile up duplicates.
+  const { error } = await supabaseAdmin()
+    .from('pending_lid_events')
+    .upsert(
+      {
+        instance_name: instanceName,
+        lid,
+        message_id: messageId,
+        payload,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'instance_name,message_id', ignoreDuplicates: true },
+    )
+  if (error) {
+    console.error('[webhook] failed to park unresolved LID event:', error.message)
+  }
+}
+
+/**
+ * Replay everything parked against a LID that we can now resolve. Called
+ * right after a successful resolve, so the backlog drains on the very
+ * event that taught us the binding.
+ */
+async function replayPendingLidEvents(instanceName: string, lid: string): Promise<void> {
+  if (!lid.endsWith('@lid')) return
+  const guardKey = `${instanceName}|${lid}`
+  if (replayingLids.has(guardKey)) return
+
+  const { data: parked, error } = await supabaseAdmin()
+    .from('pending_lid_events')
+    .select('id, payload, attempts, message_id')
+    .eq('instance_name', instanceName)
+    .eq('lid', lid)
+    .order('created_at', { ascending: true })
+    .limit(100)
+  if (error) {
+    console.error('[webhook] failed to read parked LID events:', error.message)
+    return
+  }
+  if (!parked?.length) return
+
+  replayingLids.add(guardKey)
+  try {
+    console.log(`[webhook] replaying ${parked.length} parked message(s) for ${lid}`)
+    for (const row of parked) {
+      try {
+        // Skip anything that reached the thread by another route in the
+        // meantime — replaying it would duplicate the message. This check
+        // is off the hot path: it only runs while draining a backlog.
+        const { data: already } = await supabaseAdmin()
+          .from('messages')
+          .select('id')
+          .eq('message_id', row.message_id)
+          .limit(1)
+          .maybeSingle()
+        if (!already) {
+          await handleInboundMessage(instanceName, row.payload)
+        }
+        // Delete only on success; a throw leaves the row for another pass.
+        await supabaseAdmin().from('pending_lid_events').delete().eq('id', row.id)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        console.error('[webhook] replay failed for parked event', row.id, message)
+        await supabaseAdmin()
+          .from('pending_lid_events')
+          .update({
+            attempts: (row.attempts ?? 0) + 1,
+            last_error: message.slice(0, 500),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', row.id)
+      }
+    }
+  } finally {
+    replayingLids.delete(guardKey)
+  }
+}
+
+// ============================================================
 // Inbound messages
 // ============================================================
 
@@ -563,8 +679,26 @@ async function handleInboundMessage(instanceName: string, data: any) {
     return
   }
   // Resolve a LID-addressed message to the real phone JID.
+  const unresolvedLid = jid
   jid = (await resolveJid(instanceName, key)) ?? ''
-  if (!jid) return
+  if (!jid) {
+    // Don't drop it. The binding usually turns up shortly — the next
+    // message we send to this chat carries it — so park the event and
+    // replay it then. Our own outbound is the one thing that can't wait
+    // (it's the message that would teach us), but it always resolves.
+    console.error(
+      '[webhook] unresolved LID, parking message for replay:',
+      unresolvedLid,
+      key.id,
+    )
+    await parkUnresolvedLidEvent(instanceName, unresolvedLid, key.id, data)
+    return
+  }
+
+  // Anything that reached here resolved, so record it before doing the
+  // work — a later inbound message on this chat then needs no lookup.
+  learnLid(instanceName, unresolvedLid, jid)
+  await replayPendingLidEvents(instanceName, unresolvedLid)
 
   // fromMe → either our own API send (already persisted) or a reply the
   // agent typed directly in the WhatsApp app. Capture the latter.
