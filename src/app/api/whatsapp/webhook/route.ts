@@ -571,6 +571,37 @@ function asMessages(data: any): any[] {
 }
 
 // ============================================================
+// Chat ↔ number map
+// ============================================================
+
+/**
+ * Note that `instanceName`'s number can see `remoteJid`.
+ *
+ * Every inbound event names both halves, so the map fills itself in as
+ * traffic flows — no separate sync to run or keep correct. Cheap enough to
+ * call unconditionally: one upsert against a unique index, off the
+ * critical path for the message insert.
+ */
+async function recordChatNumber(instanceName: string, remoteJid: string): Promise<void> {
+  if (!remoteJid || remoteJid === 'status@broadcast') return
+  const config = await resolveConfig(instanceName)
+  if (!config) return
+
+  const { error } = await supabaseAdmin()
+    .from('chat_numbers')
+    .upsert(
+      {
+        account_id: config.account_id,
+        whatsapp_config_id: config.id,
+        remote_jid: remoteJid,
+        last_seen_at: new Date().toISOString(),
+      },
+      { onConflict: 'whatsapp_config_id,remote_jid' },
+    )
+  if (error) console.error('[webhook] chat_numbers upsert failed:', error.message)
+}
+
+// ============================================================
 // @mentions
 // ============================================================
 
@@ -765,6 +796,12 @@ async function handleInboundMessage(
   if (jid.endsWith('@newsletter')) {
     return
   }
+
+  // Record that this number can see this chat, before any of the paths
+  // below can bail out. Groups especially: a chat several of our numbers
+  // are in is genuinely many-to-many, and the single tag on the
+  // conversation row can only hold whichever arrived last.
+  await recordChatNumber(instanceName, jid)
   // Status/Stories: contacts' (and our own) status posts. Own path — no
   // conversation, no flows/automations.
   if (jid === 'status@broadcast') {

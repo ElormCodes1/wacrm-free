@@ -80,6 +80,16 @@ export default function InboxPage() {
   );
   const [peekLoading, setPeekLoading] = useState(false);
 
+  /**
+   * Live connection state per number, keyed by whatsapp_config id.
+   *
+   * A conversation belongs to one of the account's numbers; if that line
+   * is down, messages to this chat silently never arrive. Knowing which
+   * line a chat is on is only useful if we also say when it's offline —
+   * that pairing is the whole point of the chat ↔ number map.
+   */
+  const [numberStates, setNumberStates] = useState<Record<string, string>>({});
+
   // ---- @mention resolution -------------------------------------------
   // Mentions arrive as `@<token>` in the text plus a per-message token →
   // phone map (webhook, migration 057). Resolving names once here — rather
@@ -259,16 +269,32 @@ export default function InboxPage() {
         return;
       }
 
-      // An account can have several numbers (multi-number). The inbox is
-      // "connected" as long as at least one number is connected — so fetch
-      // all rows rather than assuming a single one (a `.maybeSingle()`
-      // here would error on 2+ rows and falsely show "not connected").
-      const { data } = await supabase
-        .from('whatsapp_config')
-        .select('status')
-        .eq('account_id', accountId);
-
-      setWhatsappConnected((data ?? []).some((r) => r.status === 'connected'));
+      // Read live state via the API rather than whatsapp_config.status.
+      // The stored column is only written when a connection.update event
+      // is processed, so a state change missed during an outage leaves it
+      // stale indefinitely — it currently reports a disconnected line as
+      // "open". The endpoint asks the gateway and writes the truth back.
+      try {
+        const res = await fetch('/api/whatsapp/config');
+        const json = await res.json();
+        const numbers = (json.numbers ?? []) as {
+          id: string;
+          label: string | null;
+          connection_state: string;
+        }[];
+        setNumberStates(
+          Object.fromEntries(numbers.map((n) => [n.id, n.connection_state]))
+        );
+        setWhatsappConnected(numbers.some((n) => n.connection_state === 'open'));
+      } catch {
+        // Fall back to the stored column rather than showing a scary
+        // banner because one fetch failed.
+        const { data } = await supabase
+          .from('whatsapp_config')
+          .select('status')
+          .eq('account_id', accountId);
+        setWhatsappConnected((data ?? []).some((r) => r.status === 'connected'));
+      }
     };
 
     checkConnection();
@@ -582,6 +608,26 @@ export default function InboxPage() {
     setPeekConversationId(null);
   }, [activeConversation?.id]);
 
+  /**
+   * The open conversation's line, when that line is not connected.
+   *
+   * Deliberately keyed off the conversation rather than "is any number
+   * connected": with several numbers linked, the account looks healthy
+   * while the specific line this chat lives on is down — which is exactly
+   * the case that reads as "messages just stopped arriving".
+   */
+  const offlineNumber = useMemo(() => {
+    const configId = activeConversation?.whatsapp_config_id;
+    if (!configId) return null;
+    const state = numberStates[configId];
+    // undefined = not loaded yet; only warn on a state we actually know.
+    if (!state || state === 'open') return null;
+    return {
+      label: activeConversation?.whatsapp_config?.label ?? 'This number',
+      state,
+    };
+  }, [activeConversation, numberStates]);
+
   const mentionValue = useMemo(
     () => ({
       // Falls back through contact name → phone → raw token, so an
@@ -749,6 +795,21 @@ export default function InboxPage() {
           <WifiOff className="h-4 w-4 text-amber-400" />
           <p className="text-xs text-amber-400">
             WhatsApp® is not connected. Go to Settings to connect your account.
+          </p>
+        </div>
+      )}
+
+      {/* Per-conversation line warning. The account-level banner above
+          only fires when NO number is connected; this one catches the
+          case that actually bites — one line down among several, so the
+          chats on it go quiet with nothing to explain why. */}
+      {offlineNumber && (
+        <div className="flex shrink-0 items-center justify-center gap-2 border-b border-amber-500/20 bg-amber-500/10 px-4 py-2">
+          <WifiOff className="h-4 w-4 shrink-0 text-amber-400" />
+          <p className="text-xs text-amber-400">
+            This chat is on <span className="font-semibold">{offlineNumber.label}</span>, which
+            is disconnected — new messages won&apos;t arrive and replies won&apos;t send.
+            Reconnect it in Settings.
           </p>
         </div>
       )}

@@ -24,6 +24,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   sendText,
   sendMedia,
+  getConnectionState,
   type EvolutionMediaKind,
 } from '@/lib/whatsapp/provider/evolution';
 import { isOnWhatsApp } from '@/lib/whatsapp/provider/number-check';
@@ -265,6 +266,34 @@ export async function sendMessageToConversation(
       'whatsapp_not_configured',
       'WhatsApp is not connected. Connect a number in Settings first.',
       400
+    );
+  }
+
+  // Refuse to send from a line that isn't connected. Evolution accepts the
+  // request and queues it against a dead socket, so the message is
+  // recorded as sent, shows a tick, and never leaves — worse than a plain
+  // failure, because nothing signals that it needs resending. Checked
+  // against the gateway rather than whatsapp_config.connection_state,
+  // which is only written when a connection.update event is processed and
+  // goes stale whenever one is missed.
+  try {
+    const state = await getConnectionState(instanceName);
+    if (state !== 'open') {
+      throw new SendMessageError(
+        'whatsapp_not_configured',
+        'The WhatsApp number this conversation is on is disconnected. ' +
+          'Reconnect it in Settings, then send again.',
+        409
+      );
+    }
+  } catch (err) {
+    // A gateway we can't reach is its own failure; don't let it read as a
+    // successful send either.
+    if (err instanceof SendMessageError) throw err;
+    throw new SendMessageError(
+      'whatsapp_not_configured',
+      'Could not reach the WhatsApp gateway. Try again in a moment.',
+      503
     );
   }
 
