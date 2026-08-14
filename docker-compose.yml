@@ -94,6 +94,15 @@ services:
       CACHE_REDIS_PREFIX_KEY: evolution
       CACHE_REDIS_SAVE_INSTANCES: "false"
       CACHE_LOCAL_ENABLED: "false"
+      # Re-emit history messages the gateway already has stored.
+      #
+      # Without this, a message stored while the app was restarting (or
+      # whose webhook POST failed) is skipped by every later history sync
+      # and can never be delivered — it sits in the gateway looking
+      # healthy while the CRM has never seen it. Needs the patched image;
+      # the webhook dedupes messages.set by message id, so re-emitting is
+      # harmless.
+      WEBHOOK_HISTORY_RESEND_STORED: "true"
       CONFIG_SESSION_PHONE_CLIENT: wacrm-free
       CONFIG_SESSION_PHONE_NAME: Chrome
       QRCODE_LIMIT: "30"
