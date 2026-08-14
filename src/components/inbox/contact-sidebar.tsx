@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
-import { useAuth } from "@/hooks/use-auth";
+import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
+import { createClient } from '@/lib/supabase/client';
+import { useAuth } from '@/hooks/use-auth';
 import type {
   Contact,
   Deal,
@@ -12,7 +12,7 @@ import type {
   Pipeline,
   PipelineStage,
   Task,
-} from "@/types";
+} from '@/types';
 import {
   Phone,
   Mail,
@@ -27,14 +27,14 @@ import {
   Square,
   CheckSquare,
   Star,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { format } from "date-fns";
-import { toast } from "sonner";
-import { GroupInfoPanel } from "./group-info-panel";
-import { contactDisplayName } from "@/lib/inbox/contact-name";
-import { TaskForm } from "@/components/tasks/task-form";
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { format } from 'date-fns';
+import { toast } from 'sonner';
+import { GroupInfoPanel } from './group-info-panel';
+import { contactDisplayName } from '@/lib/inbox/contact-name';
+import { TaskForm } from '@/components/tasks/task-form';
 
 interface StarredMessage {
   id: string;
@@ -45,24 +45,27 @@ interface StarredMessage {
 
 // Fallback label for a starred message with no text (media, etc.).
 const MEDIA_LABELS: Record<string, string> = {
-  image: "📷 Photo",
-  video: "🎬 Video",
-  audio: "🎤 Voice message",
-  document: "📄 Document",
-  location: "📍 Location",
-  contact: "👤 Contact",
-  poll: "📊 Poll",
-  call: "📞 Call",
+  image: '📷 Photo',
+  video: '🎬 Video',
+  audio: '🎤 Voice message',
+  document: '📄 Document',
+  location: '📍 Location',
+  contact: '👤 Contact',
+  poll: '📊 Poll',
+  call: '📞 Call',
 };
 function starredLabel(m: StarredMessage): string {
-  return m.content_text || MEDIA_LABELS[m.content_type ?? ""] || "Message";
+  return m.content_text || MEDIA_LABELS[m.content_type ?? ''] || 'Message';
 }
 
 interface ContactSidebarProps {
   contact: Contact | null;
   /** Bubbles the resolved group subject + picture up so the thread header,
    *  list and avatar update without a reload. */
-  onGroupResolved?: (update: { name?: string; avatarUrl?: string | null }) => void;
+  onGroupResolved?: (update: {
+    name?: string;
+    avatarUrl?: string | null;
+  }) => void;
 }
 
 export function ContactSidebar({
@@ -78,7 +81,7 @@ export function ContactSidebar({
   const [starred, setStarred] = useState<StarredMessage[]>([]);
   const [notes, setNotes] = useState<ContactNote[]>([]);
   const [tags, setTags] = useState<(Tag & { contact_tag_id: string })[]>([]);
-  const [newNote, setNewNote] = useState("");
+  const [newNote, setNewNote] = useState('');
   const [addingNote, setAddingNote] = useState(false);
 
   // "Add to deal" — a compact inline form to drop this contact into a
@@ -86,10 +89,10 @@ export function ContactSidebar({
   const [showAddDeal, setShowAddDeal] = useState(false);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [dealStages, setDealStages] = useState<PipelineStage[]>([]);
-  const [dealTitle, setDealTitle] = useState("");
-  const [dealValue, setDealValue] = useState("");
-  const [dealPipelineId, setDealPipelineId] = useState("");
-  const [dealStageId, setDealStageId] = useState("");
+  const [dealTitle, setDealTitle] = useState('');
+  const [dealValue, setDealValue] = useState('');
+  const [dealPipelineId, setDealPipelineId] = useState('');
+  const [dealStageId, setDealStageId] = useState('');
   const [savingDeal, setSavingDeal] = useState(false);
 
   const fetchContactData = useCallback(async () => {
@@ -101,40 +104,44 @@ export function ContactSidebar({
     const supabase = createClient();
 
     // Fetch deals, notes, tags, tasks, and starred messages in parallel
-    const [dealsRes, notesRes, tagsRes, tasksRes, starredRes] = await Promise.all([
-      supabase
-        .from("deals")
-        .select("*, stage:pipeline_stages(*)")
-        .eq("contact_id", contact.id)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("contact_notes")
-        .select("*")
-        .eq("contact_id", contact.id)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("contact_tags")
-        .select("id, tag_id, tags(*)")
-        .eq("contact_id", contact.id),
-      supabase
-        .from("tasks")
-        .select("*")
-        .eq("contact_id", contact.id)
-        // pending before done ('pending' > 'done'), then soonest due first.
-        .order("status", { ascending: false })
-        .order("due_date", { nullsFirst: false }),
-      supabase
-        .from("messages")
-        .select("id, content_text, content_type, created_at, conversation:conversations!inner(contact_id)")
-        .eq("conversation.contact_id", contact.id)
-        .not("starred_at", "is", null)
-        .order("starred_at", { ascending: false })
-        .limit(50),
-    ]);
+    const [dealsRes, notesRes, tagsRes, tasksRes, starredRes] =
+      await Promise.all([
+        supabase
+          .from('deals')
+          .select('*, stage:pipeline_stages(*)')
+          .eq('contact_id', contact.id)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('contact_notes')
+          .select('*')
+          .eq('contact_id', contact.id)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('contact_tags')
+          .select('id, tag_id, tags(*)')
+          .eq('contact_id', contact.id),
+        supabase
+          .from('tasks')
+          .select('*')
+          .eq('contact_id', contact.id)
+          // pending before done ('pending' > 'done'), then soonest due first.
+          .order('status', { ascending: false })
+          .order('due_date', { nullsFirst: false }),
+        supabase
+          .from('messages')
+          .select(
+            'id, content_text, content_type, created_at, conversation:conversations!inner(contact_id)'
+          )
+          .eq('conversation.contact_id', contact.id)
+          .not('starred_at', 'is', null)
+          .order('starred_at', { ascending: false })
+          .limit(50),
+      ]);
 
     if (dealsRes.data) setDeals(dealsRes.data);
     if (tasksRes.data) setTasks(tasksRes.data as Task[]);
-    if (starredRes.data) setStarred(starredRes.data as unknown as StarredMessage[]);
+    if (starredRes.data)
+      setStarred(starredRes.data as unknown as StarredMessage[]);
     if (notesRes.data) setNotes(notesRes.data);
     if (tagsRes.data) {
       const mapped = tagsRes.data
@@ -149,26 +156,26 @@ export function ContactSidebar({
 
   const toggleTask = useCallback(
     async (task: Task) => {
-      const done = task.status !== "done";
+      const done = task.status !== 'done';
       const completed_at = done ? new Date().toISOString() : null;
       setTasks((prev) =>
         prev.map((t) =>
           t.id === task.id
-            ? { ...t, status: done ? "done" : "pending", completed_at }
-            : t,
-        ),
+            ? { ...t, status: done ? 'done' : 'pending', completed_at }
+            : t
+        )
       );
       const supabase = createClient();
       const { error } = await supabase
-        .from("tasks")
-        .update({ status: done ? "done" : "pending", completed_at })
-        .eq("id", task.id);
+        .from('tasks')
+        .update({ status: done ? 'done' : 'pending', completed_at })
+        .eq('id', task.id);
       if (error) {
-        toast.error("Failed to update task");
+        toast.error('Failed to update task');
         fetchContactData();
       }
     },
-    [fetchContactData],
+    [fetchContactData]
   );
 
   // Load on contact change. setContactData/setTags run inside async
@@ -200,7 +207,7 @@ export function ContactSidebar({
     const user = session?.user;
 
     const { data, error } = await supabase
-      .from("contact_notes")
+      .from('contact_notes')
       .insert({
         contact_id: contact.id,
         account_id: accountId,
@@ -212,7 +219,7 @@ export function ContactSidebar({
 
     if (!error && data) {
       setNotes((prev) => [data, ...prev]);
-      setNewNote("");
+      setNewNote('');
     }
     setAddingNote(false);
   }, [contact, newNote, accountId]);
@@ -220,23 +227,23 @@ export function ContactSidebar({
   const loadStages = useCallback(async (pipelineId: string) => {
     const supabase = createClient();
     const { data } = await supabase
-      .from("pipeline_stages")
-      .select("*")
-      .eq("pipeline_id", pipelineId)
-      .order("position");
+      .from('pipeline_stages')
+      .select('*')
+      .eq('pipeline_id', pipelineId)
+      .order('position');
     return (data ?? []) as PipelineStage[];
   }, []);
 
   const openAddDeal = useCallback(async () => {
     if (!contact) return;
     setShowAddDeal(true);
-    setDealTitle(contact.name || contact.phone || "New deal");
-    setDealValue("");
+    setDealTitle(contact.name || contact.phone || 'New deal');
+    setDealValue('');
     const supabase = createClient();
     const { data } = await supabase
-      .from("pipelines")
-      .select("*")
-      .order("created_at");
+      .from('pipelines')
+      .select('*')
+      .order('created_at');
     const list = (data ?? []) as Pipeline[];
     setPipelines(list);
     const first = list[0];
@@ -244,11 +251,11 @@ export function ContactSidebar({
       setDealPipelineId(first.id);
       const stages = await loadStages(first.id);
       setDealStages(stages);
-      setDealStageId(stages[0]?.id ?? "");
+      setDealStageId(stages[0]?.id ?? '');
     } else {
-      setDealPipelineId("");
+      setDealPipelineId('');
       setDealStages([]);
-      setDealStageId("");
+      setDealStageId('');
     }
   }, [contact, loadStages]);
 
@@ -257,19 +264,19 @@ export function ContactSidebar({
       setDealPipelineId(pipelineId);
       const stages = await loadStages(pipelineId);
       setDealStages(stages);
-      setDealStageId(stages[0]?.id ?? "");
+      setDealStageId(stages[0]?.id ?? '');
     },
-    [loadStages],
+    [loadStages]
   );
 
   const handleCreateDeal = useCallback(async () => {
     if (!contact) return;
     if (!accountId) {
-      toast.error("Your profile is not linked to an account.");
+      toast.error('Your profile is not linked to an account.');
       return;
     }
     if (!dealPipelineId || !dealStageId || !dealTitle.trim()) {
-      toast.error("Pick a pipeline and a stage.");
+      toast.error('Pick a pipeline and a stage.');
       return;
     }
     setSavingDeal(true);
@@ -279,12 +286,12 @@ export function ContactSidebar({
     } = await supabase.auth.getSession();
     const user = session?.user;
     if (!user) {
-      toast.error("Not signed in");
+      toast.error('Not signed in');
       setSavingDeal(false);
       return;
     }
     const { data, error } = await supabase
-      .from("deals")
+      .from('deals')
       .insert({
         title: dealTitle.trim(),
         value: parseFloat(dealValue) || 0,
@@ -294,18 +301,18 @@ export function ContactSidebar({
         stage_id: dealStageId,
         user_id: user.id,
         account_id: accountId,
-        status: "open",
+        status: 'open',
       })
-      .select("*, stage:pipeline_stages(*)")
+      .select('*, stage:pipeline_stages(*)')
       .single();
     setSavingDeal(false);
     if (error || !data) {
-      toast.error("Failed to add deal");
+      toast.error('Failed to add deal');
       return;
     }
     setDeals((prev) => [data as Deal, ...prev]);
     setShowAddDeal(false);
-    toast.success("Added to pipeline");
+    toast.success('Added to pipeline');
   }, [
     contact,
     accountId,
@@ -318,8 +325,8 @@ export function ContactSidebar({
 
   if (!contact) {
     return (
-      <div className="flex h-full w-70 items-center justify-center border-l border-border bg-card">
-        <p className="text-sm text-muted-foreground">Select a conversation</p>
+      <div className="border-border bg-card flex h-full w-70 items-center justify-center border-l">
+        <p className="text-muted-foreground text-sm">Select a conversation</p>
       </div>
     );
   }
@@ -328,12 +335,12 @@ export function ContactSidebar({
   const initials = displayName.charAt(0).toUpperCase();
 
   return (
-    <div className="flex h-full w-70 flex-col border-l border-border bg-card">
+    <div className="border-border bg-card flex h-full w-70 flex-col border-l">
       <ScrollArea className="flex-1">
         <div className="p-4">
           {/* Contact Info */}
           <div className="flex flex-col items-center text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted text-lg font-semibold text-foreground">
+            <div className="bg-muted text-foreground flex h-16 w-16 items-center justify-center rounded-full text-lg font-semibold">
               {contact.avatar_url ? (
                 <img
                   src={contact.avatar_url}
@@ -344,11 +351,11 @@ export function ContactSidebar({
                 initials
               )}
             </div>
-            <h3 className="mt-3 text-sm font-semibold text-foreground">
+            <h3 className="text-foreground mt-3 text-sm font-semibold">
               {displayName}
             </h3>
             {contact.company && (
-              <p className="text-xs text-muted-foreground">{contact.company}</p>
+              <p className="text-muted-foreground text-xs">{contact.company}</p>
             )}
           </div>
 
@@ -365,283 +372,294 @@ export function ContactSidebar({
 
           {!contact.is_group && (
             <>
-          {/* Phone */}
-          <div className="mt-4 space-y-2">
-            <button
-              onClick={handleCopyPhone}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted"
-            >
-              <Phone className="h-4 w-4 text-muted-foreground" />
-              <span className="flex-1 text-left">{contact.phone}</span>
-              {copied ? (
-                <Check className="h-3 w-3 text-primary" />
-              ) : (
-                <Copy className="h-3 w-3 text-muted-foreground" />
-              )}
-            </button>
+              {/* Phone */}
+              <div className="mt-4 space-y-2">
+                <button
+                  onClick={handleCopyPhone}
+                  className="text-muted-foreground hover:bg-muted flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors"
+                >
+                  <Phone className="text-muted-foreground h-4 w-4" />
+                  <span className="flex-1 text-left">{contact.phone}</span>
+                  {copied ? (
+                    <Check className="text-primary h-3 w-3" />
+                  ) : (
+                    <Copy className="text-muted-foreground h-3 w-3" />
+                  )}
+                </button>
 
-            {contact.email && (
-              <div className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground">
-                <Mail className="h-4 w-4 text-muted-foreground" />
-                <span className="truncate">{contact.email}</span>
+                {contact.email && (
+                  <div className="text-muted-foreground flex items-center gap-2 rounded-lg px-3 py-2 text-sm">
+                    <Mail className="text-muted-foreground h-4 w-4" />
+                    <span className="truncate">{contact.email}</span>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          {/* Divider */}
-          <div className="my-4 border-t border-border" />
+              {/* Divider */}
+              <div className="border-border my-4 border-t" />
 
-          {/* Tags */}
-          <div>
-            <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              <TagIcon className="h-3 w-3" />
-              Tags
-            </div>
-            <div className="mt-2 flex flex-wrap gap-1">
-              {tags.length === 0 ? (
-                <p className="px-1 text-xs text-muted-foreground">No tags</p>
-              ) : (
-                tags.map((tag) => (
-                  <span
-                    key={tag.contact_tag_id}
-                    className="rounded-full px-2 py-0.5 text-[10px] font-medium"
-                    style={{
-                      backgroundColor: `${tag.color}20`,
-                      color: tag.color,
-                    }}
-                  >
-                    {tag.name}
-                  </span>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Divider */}
-          <div className="my-4 border-t border-border" />
-
-          {/* Active Deals */}
-          <div>
-            <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              <DollarSign className="h-3 w-3" />
-              Active Deals
-            </div>
-            <div className="mt-2 space-y-2">
-              {deals.length === 0 && !showAddDeal ? (
-                <p className="px-1 text-xs text-muted-foreground">No deals</p>
-              ) : (
-                deals.map((deal) => (
-                  <Link
-                    key={deal.id}
-                    href={`/pipelines?pipeline=${deal.pipeline_id}&deal=${deal.id}`}
-                    className="block rounded-lg bg-muted px-3 py-2 transition-colors hover:bg-muted/70"
-                    title="Open this deal in Pipelines"
-                  >
-                    <p className="text-sm font-medium text-foreground">
-                      {deal.title}
-                    </p>
-                    <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
-                      <span>
-                        {deal.currency ?? "$"}
-                        {deal.value.toLocaleString()}
-                      </span>
-                      {deal.stage && (
-                        <span
-                          className="rounded-full px-1.5 py-0.5 text-[10px]"
-                          style={{
-                            backgroundColor: `${deal.stage.color}20`,
-                            color: deal.stage.color,
-                          }}
-                        >
-                          {deal.stage.name}
-                        </span>
-                      )}
-                    </div>
-                  </Link>
-                ))
-              )}
-
-              {showAddDeal ? (
-                <div className="space-y-2 rounded-lg border border-border bg-muted/40 p-2.5">
-                  {pipelines.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">
-                      No pipelines yet. Create one on the Pipelines page first.
+              {/* Tags */}
+              <div>
+                <div className="text-muted-foreground flex items-center gap-2 px-1 text-xs font-medium tracking-wider uppercase">
+                  <TagIcon className="h-3 w-3" />
+                  Tags
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {tags.length === 0 ? (
+                    <p className="text-muted-foreground px-1 text-xs">
+                      No tags
                     </p>
                   ) : (
-                    <>
-                      <input
-                        value={dealTitle}
-                        onChange={(e) => setDealTitle(e.target.value)}
-                        placeholder="Deal title"
-                        className="w-full rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-foreground placeholder-muted-foreground outline-none focus:border-primary/60"
-                      />
-                      <div className="grid gap-1">
-                        <label className="px-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                          Pipeline
-                        </label>
-                        <select
-                          value={dealPipelineId}
-                          onChange={(e) => handlePipelineChange(e.target.value)}
-                          className="h-8 w-full rounded-md border border-border bg-card px-2 text-xs text-foreground outline-none focus:border-primary/60"
-                        >
-                          {pipelines.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="grid gap-1">
-                        <label className="px-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                          Stage
-                        </label>
-                        <select
-                          value={dealStageId}
-                          onChange={(e) => setDealStageId(e.target.value)}
-                          className="h-8 w-full rounded-md border border-border bg-card px-2 text-xs text-foreground outline-none focus:border-primary/60"
-                        >
-                          {dealStages.map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="relative">
-                        <DollarSign className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
-                        <input
-                          type="number"
-                          value={dealValue}
-                          onChange={(e) => setDealValue(e.target.value)}
-                          placeholder="Value (optional)"
-                          className="w-full rounded-md border border-border bg-card py-1.5 pl-6 pr-2 text-xs text-foreground placeholder-muted-foreground outline-none focus:border-primary/60"
-                        />
-                      </div>
-                    </>
-                  )}
-                  <div className="flex gap-2 pt-0.5">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 flex-1 text-xs"
-                      onClick={() => setShowAddDeal(false)}
-                      disabled={savingDeal}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      size="sm"
-                      className="h-7 flex-1 bg-primary text-xs text-primary-foreground hover:bg-primary/90"
-                      onClick={handleCreateDeal}
-                      disabled={
-                        savingDeal ||
-                        pipelines.length === 0 ||
-                        !dealPipelineId ||
-                        !dealStageId
-                      }
-                    >
-                      {savingDeal ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : (
-                        "Save"
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={openAddDeal}
-                  className="flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-border px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"
-                >
-                  <Plus className="h-3 w-3" />
-                  Add to deal
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Divider */}
-          <div className="my-4 border-t border-border" />
-
-          {/* Tasks */}
-          <div>
-            <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              <ListTodo className="h-3 w-3" />
-              Tasks
-            </div>
-            <div className="mt-2 space-y-2">
-              {tasks.length === 0 ? (
-                <p className="px-1 text-xs text-muted-foreground">No tasks</p>
-              ) : (
-                tasks.map((t) => {
-                  const done = t.status === "done";
-                  return (
-                    <div
-                      key={t.id}
-                      className="flex items-start gap-2 rounded-lg bg-muted px-3 py-2"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => toggleTask(t)}
-                        aria-label={done ? "Mark task pending" : "Mark task done"}
-                        className="mt-0.5 shrink-0 text-muted-foreground hover:text-primary"
-                      >
-                        {done ? (
-                          <CheckSquare className="h-4 w-4 text-primary" />
-                        ) : (
-                          <Square className="h-4 w-4" />
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingTask(t);
-                          setTaskFormOpen(true);
+                    tags.map((tag) => (
+                      <span
+                        key={tag.contact_tag_id}
+                        className="rounded-full px-2 py-0.5 text-[10px] font-medium"
+                        style={{
+                          backgroundColor: `${tag.color}20`,
+                          color: tag.color,
                         }}
-                        className="min-w-0 flex-1 text-left"
                       >
-                        <p
-                          className={`text-sm ${
-                            done
-                              ? "text-muted-foreground line-through"
-                              : "text-foreground"
-                          }`}
-                        >
-                          {t.title}
+                        {tag.name}
+                      </span>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Divider */}
+              <div className="border-border my-4 border-t" />
+
+              {/* Active Deals */}
+              <div>
+                <div className="text-muted-foreground flex items-center gap-2 px-1 text-xs font-medium tracking-wider uppercase">
+                  <DollarSign className="h-3 w-3" />
+                  Active Deals
+                </div>
+                <div className="mt-2 space-y-2">
+                  {deals.length === 0 && !showAddDeal ? (
+                    <p className="text-muted-foreground px-1 text-xs">
+                      No deals
+                    </p>
+                  ) : (
+                    deals.map((deal) => (
+                      <Link
+                        key={deal.id}
+                        href={`/pipelines?pipeline=${deal.pipeline_id}&deal=${deal.id}`}
+                        className="bg-muted hover:bg-muted/70 block rounded-lg px-3 py-2 transition-colors"
+                        title="Open this deal in Pipelines"
+                      >
+                        <p className="text-foreground text-sm font-medium">
+                          {deal.title}
                         </p>
-                        {t.due_date && (
-                          <p className="mt-0.5 text-[11px] text-muted-foreground">
-                            {format(new Date(t.due_date), "MMM d, HH:mm")}
-                          </p>
-                        )}
-                      </button>
+                        <div className="text-muted-foreground mt-1 flex items-center justify-between text-xs">
+                          <span>
+                            {deal.currency ?? '$'}
+                            {deal.value.toLocaleString()}
+                          </span>
+                          {deal.stage && (
+                            <span
+                              className="rounded-full px-1.5 py-0.5 text-[10px]"
+                              style={{
+                                backgroundColor: `${deal.stage.color}20`,
+                                color: deal.stage.color,
+                              }}
+                            >
+                              {deal.stage.name}
+                            </span>
+                          )}
+                        </div>
+                      </Link>
+                    ))
+                  )}
+
+                  {showAddDeal ? (
+                    <div className="border-border bg-muted/40 space-y-2 rounded-lg border p-2.5">
+                      {pipelines.length === 0 ? (
+                        <p className="text-muted-foreground text-xs">
+                          No pipelines yet. Create one on the Pipelines page
+                          first.
+                        </p>
+                      ) : (
+                        <>
+                          <input
+                            value={dealTitle}
+                            onChange={(e) => setDealTitle(e.target.value)}
+                            placeholder="Deal title"
+                            className="border-border bg-card text-foreground placeholder-muted-foreground focus:border-primary/60 w-full rounded-md border px-2.5 py-1.5 text-xs outline-none"
+                          />
+                          <div className="grid gap-1">
+                            <label className="text-muted-foreground px-0.5 text-[10px] font-medium tracking-wider uppercase">
+                              Pipeline
+                            </label>
+                            <select
+                              value={dealPipelineId}
+                              onChange={(e) =>
+                                handlePipelineChange(e.target.value)
+                              }
+                              className="border-border bg-card text-foreground focus:border-primary/60 h-8 w-full rounded-md border px-2 text-xs outline-none"
+                            >
+                              {pipelines.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="grid gap-1">
+                            <label className="text-muted-foreground px-0.5 text-[10px] font-medium tracking-wider uppercase">
+                              Stage
+                            </label>
+                            <select
+                              value={dealStageId}
+                              onChange={(e) => setDealStageId(e.target.value)}
+                              className="border-border bg-card text-foreground focus:border-primary/60 h-8 w-full rounded-md border px-2 text-xs outline-none"
+                            >
+                              {dealStages.map((s) => (
+                                <option key={s.id} value={s.id}>
+                                  {s.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="relative">
+                            <DollarSign className="text-muted-foreground absolute top-1/2 left-2 h-3 w-3 -translate-y-1/2" />
+                            <input
+                              type="number"
+                              value={dealValue}
+                              onChange={(e) => setDealValue(e.target.value)}
+                              placeholder="Value (optional)"
+                              className="border-border bg-card text-foreground placeholder-muted-foreground focus:border-primary/60 w-full rounded-md border py-1.5 pr-2 pl-6 text-xs outline-none"
+                            />
+                          </div>
+                        </>
+                      )}
+                      <div className="flex gap-2 pt-0.5">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 flex-1 text-xs"
+                          onClick={() => setShowAddDeal(false)}
+                          disabled={savingDeal}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="bg-primary text-primary-foreground hover:bg-primary/90 h-7 flex-1 text-xs"
+                          onClick={handleCreateDeal}
+                          disabled={
+                            savingDeal ||
+                            pipelines.length === 0 ||
+                            !dealPipelineId ||
+                            !dealStageId
+                          }
+                        >
+                          {savingDeal ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            'Save'
+                          )}
+                        </Button>
+                      </div>
                     </div>
-                  );
-                })
-              )}
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingTask(null);
-                  setTaskFormOpen(true);
-                }}
-                className="flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-border px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"
-              >
-                <Plus className="h-3 w-3" />
-                Add task
-              </button>
-            </div>
-          </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={openAddDeal}
+                      className="border-border text-muted-foreground hover:border-primary/50 hover:text-primary flex w-full items-center justify-center gap-1 rounded-lg border border-dashed px-3 py-2 text-xs font-medium transition-colors"
+                    >
+                      <Plus className="h-3 w-3" />
+                      Add to deal
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Divider */}
+              <div className="border-border my-4 border-t" />
+
+              {/* Tasks */}
+              <div>
+                <div className="text-muted-foreground flex items-center gap-2 px-1 text-xs font-medium tracking-wider uppercase">
+                  <ListTodo className="h-3 w-3" />
+                  Tasks
+                </div>
+                <div className="mt-2 space-y-2">
+                  {tasks.length === 0 ? (
+                    <p className="text-muted-foreground px-1 text-xs">
+                      No tasks
+                    </p>
+                  ) : (
+                    tasks.map((t) => {
+                      const done = t.status === 'done';
+                      return (
+                        <div
+                          key={t.id}
+                          className="bg-muted flex items-start gap-2 rounded-lg px-3 py-2"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => toggleTask(t)}
+                            aria-label={
+                              done ? 'Mark task pending' : 'Mark task done'
+                            }
+                            className="text-muted-foreground hover:text-primary mt-0.5 shrink-0"
+                          >
+                            {done ? (
+                              <CheckSquare className="text-primary h-4 w-4" />
+                            ) : (
+                              <Square className="h-4 w-4" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingTask(t);
+                              setTaskFormOpen(true);
+                            }}
+                            className="min-w-0 flex-1 text-left"
+                          >
+                            <p
+                              className={`text-sm ${
+                                done
+                                  ? 'text-muted-foreground line-through'
+                                  : 'text-foreground'
+                              }`}
+                            >
+                              {t.title}
+                            </p>
+                            {t.due_date && (
+                              <p className="text-muted-foreground mt-0.5 text-[11px]">
+                                {format(new Date(t.due_date), 'MMM d, HH:mm')}
+                              </p>
+                            )}
+                          </button>
+                        </div>
+                      );
+                    })
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingTask(null);
+                      setTaskFormOpen(true);
+                    }}
+                    className="border-border text-muted-foreground hover:border-primary/50 hover:text-primary flex w-full items-center justify-center gap-1 rounded-lg border border-dashed px-3 py-2 text-xs font-medium transition-colors"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Add task
+                  </button>
+                </div>
+              </div>
             </>
           )}
 
           {/* Divider */}
-          <div className="my-4 border-t border-border" />
+          <div className="border-border my-4 border-t" />
 
           {/* Notes */}
           <div>
-            <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <div className="text-muted-foreground flex items-center gap-2 px-1 text-xs font-medium tracking-wider uppercase">
               <StickyNote className="h-3 w-3" />
               Notes
             </div>
@@ -652,11 +670,11 @@ export function ContactSidebar({
                   onChange={(e) => setNewNote(e.target.value)}
                   placeholder="Add a note..."
                   rows={2}
-                  className="flex-1 resize-none rounded-lg border border-border bg-muted px-3 py-2 text-xs text-foreground placeholder-muted-foreground outline-none focus:border-primary/50"
+                  className="border-border bg-muted text-foreground placeholder-muted-foreground focus:border-primary/50 flex-1 resize-none rounded-lg border px-3 py-2 text-xs outline-none"
                 />
                 <Button
                   size="sm"
-                  className="h-auto bg-primary px-2 hover:bg-primary/90"
+                  className="bg-primary hover:bg-primary/90 h-auto px-2"
                   onClick={handleAddNote}
                   disabled={!newNote.trim() || addingNote}
                 >
@@ -666,15 +684,12 @@ export function ContactSidebar({
 
               <div className="mt-2 space-y-2">
                 {notes.map((note) => (
-                  <div
-                    key={note.id}
-                    className="rounded-lg bg-muted px-3 py-2"
-                  >
-                    <p className="whitespace-pre-wrap text-xs text-muted-foreground">
+                  <div key={note.id} className="bg-muted rounded-lg px-3 py-2">
+                    <p className="text-muted-foreground text-xs whitespace-pre-wrap">
                       {note.note_text}
                     </p>
-                    <p className="mt-1 text-[10px] text-muted-foreground">
-                      {format(new Date(note.created_at), "MMM d, yyyy HH:mm")}
+                    <p className="text-muted-foreground mt-1 text-[10px]">
+                      {format(new Date(note.created_at), 'MMM d, yyyy HH:mm')}
                     </p>
                   </div>
                 ))}
@@ -682,27 +697,27 @@ export function ContactSidebar({
             </div>
 
             {/* Divider */}
-            <div className="my-4 border-t border-border" />
+            <div className="border-border my-4 border-t" />
 
             {/* Starred messages */}
             <div>
-              <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              <div className="text-muted-foreground flex items-center gap-2 px-1 text-xs font-medium tracking-wider uppercase">
                 <Star className="h-3 w-3" />
                 Starred
               </div>
               <div className="mt-2 space-y-2">
                 {starred.length === 0 ? (
-                  <p className="px-1 text-xs text-muted-foreground">
+                  <p className="text-muted-foreground px-1 text-xs">
                     No starred messages
                   </p>
                 ) : (
                   starred.map((m) => (
-                    <div key={m.id} className="rounded-lg bg-muted px-3 py-2">
-                      <p className="line-clamp-3 whitespace-pre-wrap text-xs text-foreground">
+                    <div key={m.id} className="bg-muted rounded-lg px-3 py-2">
+                      <p className="text-foreground line-clamp-3 text-xs whitespace-pre-wrap">
                         {starredLabel(m)}
                       </p>
-                      <p className="mt-1 text-[10px] text-muted-foreground">
-                        {format(new Date(m.created_at), "MMM d, yyyy HH:mm")}
+                      <p className="text-muted-foreground mt-1 text-[10px]">
+                        {format(new Date(m.created_at), 'MMM d, yyyy HH:mm')}
                       </p>
                     </div>
                   ))

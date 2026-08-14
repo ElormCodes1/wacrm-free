@@ -1,25 +1,30 @@
-"use client";
+'use client';
 
-import { useState, useCallback, useEffect, useRef } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
 import {
   CONVERSATION_SELECT,
   normalizeConversation,
-} from "@/lib/inbox/conversations";
-import type { Conversation, Message, Contact, ConversationStatus } from "@/types";
-import { useRealtime } from "@/hooks/use-realtime";
-import { ConversationList } from "@/components/inbox/conversation-list";
-import { MessageThread } from "@/components/inbox/message-thread";
-import { ContactSidebar } from "@/components/inbox/contact-sidebar";
-import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
-import { toast } from "sonner";
-import { WifiOff } from "lucide-react";
-import { cn } from "@/lib/utils";
+} from '@/lib/inbox/conversations';
+import type {
+  Conversation,
+  Message,
+  Contact,
+  ConversationStatus,
+} from '@/types';
+import { useRealtime } from '@/hooks/use-realtime';
+import { ConversationList } from '@/components/inbox/conversation-list';
+import { MessageThread } from '@/components/inbox/message-thread';
+import { ContactSidebar } from '@/components/inbox/contact-sidebar';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
+import { toast } from 'sonner';
+import { WifiOff } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 // Remembers the agent's show/hide choice for the desktop contact panel
 // across reloads and sessions (device-scoped, like the theme prefs).
-const CONTACT_PANEL_STORAGE_KEY = "wacrm:inbox:contact-panel-open";
+const CONTACT_PANEL_STORAGE_KEY = 'wacrm:inbox:contact-panel-open';
 
 export default function InboxPage() {
   const router = useRouter();
@@ -29,7 +34,7 @@ export default function InboxPage() {
    * dashboard's recent-conversations list so the right thread opens
    * automatically instead of showing the empty center panel.
    */
-  const deepLinkConvId = searchParams.get("c");
+  const deepLinkConvId = searchParams.get('c');
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversation, setActiveConversation] =
@@ -63,7 +68,7 @@ export default function InboxPage() {
   useEffect(() => {
     try {
       const stored = localStorage.getItem(CONTACT_PANEL_STORAGE_KEY);
-      if (stored !== null) setContactPanelOpen(stored === "true");
+      if (stored !== null) setContactPanelOpen(stored === 'true');
     } catch {
       // localStorage can throw in private-browsing / sandboxed contexts.
     }
@@ -125,14 +130,14 @@ export default function InboxPage() {
     try {
       const supabase = createClient();
       const { data, error } = await supabase
-        .from("conversations")
+        .from('conversations')
         .select(CONVERSATION_SELECT)
-        .eq("id", convId)
+        .eq('id', convId)
         .maybeSingle();
       if (error) {
         // Supabase errors have non-enumerable properties — log fields
         // explicitly so the console message isn't just `{}`.
-        console.error("Failed to hydrate conversation:", {
+        console.error('Failed to hydrate conversation:', {
           message: error.message,
           details: error.details,
           hint: error.hint,
@@ -153,7 +158,7 @@ export default function InboxPage() {
           return prev.map((c) =>
             c.id === fetched.id
               ? { ...c, contact: c.contact ?? fetched.contact }
-              : c,
+              : c
           );
         }
         return [fetched, ...prev];
@@ -181,9 +186,9 @@ export default function InboxPage() {
       // shared inbox even though the admin had it configured.
       // Resolve account_id via the profile and query by that.
       const { data: profile } = await supabase
-        .from("profiles")
-        .select("account_id")
-        .eq("user_id", user.id)
+        .from('profiles')
+        .select('account_id')
+        .eq('user_id', user.id)
         .maybeSingle();
       const accountId = profile?.account_id as string | undefined;
       if (!accountId) {
@@ -196,11 +201,11 @@ export default function InboxPage() {
       // all rows rather than assuming a single one (a `.maybeSingle()`
       // here would error on 2+ rows and falsely show "not connected").
       const { data } = await supabase
-        .from("whatsapp_config")
-        .select("status")
-        .eq("account_id", accountId);
+        .from('whatsapp_config')
+        .select('status')
+        .eq('account_id', accountId);
 
-      setWhatsappConnected((data ?? []).some((r) => r.status === "connected"));
+      setWhatsappConnected((data ?? []).some((r) => r.status === 'connected'));
     };
 
     checkConnection();
@@ -211,7 +216,7 @@ export default function InboxPage() {
     (event: { eventType: string; new: Message; old: Partial<Message> }) => {
       const newMsg = event.new;
 
-      if (event.eventType === "INSERT") {
+      if (event.eventType === 'INSERT') {
         // Add to messages if it belongs to active conversation
         if (
           activeConversation &&
@@ -222,7 +227,7 @@ export default function InboxPage() {
             if (prev.some((m) => m.id === newMsg.id)) return prev;
             // Replace optimistic message if it exists
             const withoutOptimistic = prev.filter(
-              (m) => !m.id.startsWith("temp-")
+              (m) => !m.id.startsWith('temp-')
             );
             return [...withoutOptimistic, newMsg];
           });
@@ -239,15 +244,15 @@ export default function InboxPage() {
               c.id === newMsg.conversation_id
                 ? {
                     ...c,
-                    last_message_text: newMsg.content_text ?? "",
+                    last_message_text: newMsg.content_text ?? '',
                     last_message_at: newMsg.created_at,
                     unread_count:
                       activeConversation?.id === newMsg.conversation_id
                         ? 0
                         : c.unread_count + 1,
                   }
-                : c,
-            ),
+                : c
+            )
           );
         } else {
           // First time we're seeing this conv: the conv-INSERT event
@@ -259,7 +264,7 @@ export default function InboxPage() {
         }
       }
 
-      if (event.eventType === "UPDATE") {
+      if (event.eventType === 'UPDATE') {
         // Update message status
         setMessages((prev) =>
           prev.map((m) => (m.id === newMsg.id ? { ...m, ...newMsg } : m))
@@ -278,7 +283,7 @@ export default function InboxPage() {
     }) => {
       const conv = event.new;
 
-      if (event.eventType === "INSERT") {
+      if (event.eventType === 'INSERT') {
         // Prepend immediately for snappy UX so the new conv shows in the
         // list right away, then hydrate to fill in the `contact` join
         // (realtime payloads never include joins). Skip both if we
@@ -293,7 +298,7 @@ export default function InboxPage() {
         }
       }
 
-      if (event.eventType === "UPDATE") {
+      if (event.eventType === 'UPDATE') {
         if (knownConvIdsRef.current.has(conv.id)) {
           // If this UPDATE is for the conv the user is currently viewing,
           // suppress the incoming unread_count — the user is reading it
@@ -309,8 +314,8 @@ export default function InboxPage() {
                     ...conv,
                     unread_count: isActive ? 0 : conv.unread_count,
                   }
-                : c,
-            ),
+                : c
+            )
           );
         } else {
           // UPDATE arrived before the INSERT (or after a missed INSERT)
@@ -322,9 +327,7 @@ export default function InboxPage() {
 
         // Update active conversation if it changed
         if (activeConversation && conv.id === activeConversation.id) {
-          setActiveConversation((prev) =>
-            prev ? { ...prev, ...conv } : prev
-          );
+          setActiveConversation((prev) => (prev ? { ...prev, ...conv } : prev));
         }
       }
     },
@@ -336,7 +339,7 @@ export default function InboxPage() {
   // WS was disconnected (laptop sleep, network blip, background-tab
   // throttle) are simply lost. We need a way to catch up.
   const { isConnected } = useRealtime({
-    channelName: "inbox-realtime",
+    channelName: 'inbox-realtime',
     onMessageEvent: handleMessageEvent,
     onConversationEvent: handleConversationEvent,
     enabled: true,
@@ -374,13 +377,13 @@ export default function InboxPage() {
    */
   useEffect(() => {
     const onVisibility = () => {
-      if (document.visibilityState === "visible") {
+      if (document.visibilityState === 'visible') {
         setResyncToken((n) => n + 1);
       }
     };
-    document.addEventListener("visibilitychange", onVisibility);
+    document.addEventListener('visibilitychange', onVisibility);
     return () => {
-      document.removeEventListener("visibilitychange", onVisibility);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, []);
 
@@ -430,8 +433,8 @@ export default function InboxPage() {
           if (match.unread_count > 0) {
             setConversations((prev) =>
               prev.map((c) =>
-                c.id === match.id ? { ...c, unread_count: 0 } : c,
-              ),
+                c.id === match.id ? { ...c, unread_count: 0 } : c
+              )
             );
           }
         }
@@ -454,11 +457,11 @@ export default function InboxPage() {
         prev.map((cv) =>
           cv.id === activeConversation?.id && cv.contact?.is_group
             ? { ...cv, contact: { ...cv.contact, ...patch } }
-            : cv,
-        ),
+            : cv
+        )
       );
     },
-    [activeConversation?.id],
+    [activeConversation?.id]
   );
 
   const handleSelectConversation = useCallback(
@@ -482,10 +485,8 @@ export default function InboxPage() {
       // even if the realtime UPDATE is dropped.
       setConversations((prev) =>
         prev.map((c) =>
-          c.id === conv.id && c.unread_count > 0
-            ? { ...c, unread_count: 0 }
-            : c,
-        ),
+          c.id === conv.id && c.unread_count > 0 ? { ...c, unread_count: 0 } : c
+        )
       );
       // Record the selection on the deep-link ref BEFORE we change the
       // URL. The router.replace below flips `deepLinkConvId`, which can
@@ -513,9 +514,8 @@ export default function InboxPage() {
     // Clearing the ref lets the deep-link auto-selector fire again if
     // the user later visits /inbox?c=<same-id> — desirable UX.
     autoSelectedForDeepLinkRef.current = null;
-    router.replace("/inbox", { scroll: false });
+    router.replace('/inbox', { scroll: false });
   }, [router]);
-
 
   const handleMessagesLoaded = useCallback((loaded: Message[]) => {
     setMessages(loaded);
@@ -595,8 +595,8 @@ export default function InboxPage() {
             thread can occupy the full width. Always visible on lg+. */}
         <div
           className={cn(
-            "flex h-full flex-1 lg:flex-none",
-            hasActiveConv ? "hidden lg:flex" : "flex",
+            'flex h-full flex-1 lg:flex-none',
+            hasActiveConv ? 'hidden lg:flex' : 'flex'
           )}
         >
           <ConversationList
@@ -620,8 +620,8 @@ export default function InboxPage() {
             on the right. Issue #165. */}
         <div
           className={cn(
-            "flex h-full min-w-0 flex-1 lg:flex",
-            hasActiveConv ? "flex" : "hidden lg:flex",
+            'flex h-full min-w-0 flex-1 lg:flex',
+            hasActiveConv ? 'flex' : 'hidden lg:flex'
           )}
         >
           <MessageThread
@@ -660,10 +660,7 @@ export default function InboxPage() {
           own width so it fills the sheet exactly. Opened from the thread
           header's contact button. */}
       <Sheet open={mobileContactOpen} onOpenChange={setMobileContactOpen}>
-        <SheetContent
-          side="right"
-          className="w-70 max-w-[88vw] p-0 xl:hidden"
-        >
+        <SheetContent side="right" className="w-70 max-w-[88vw] p-0 xl:hidden">
           <SheetTitle className="sr-only">Contact details</SheetTitle>
           <ContactSidebar
             contact={activeContact}

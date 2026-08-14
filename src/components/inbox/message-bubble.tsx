@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import { useState, useEffect, useCallback, type ReactNode } from "react";
-import { cn } from "@/lib/utils";
-import type { Message, MessageReaction } from "@/types";
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { cn } from '@/lib/utils';
+import type { Message, MessageReaction } from '@/types';
 import {
   Clock,
   Check,
@@ -21,10 +21,10 @@ import {
   CalendarClock,
   Pin,
   Loader2,
-} from "lucide-react";
-import { format } from "date-fns";
-import { ReplyQuote } from "./reply-quote";
-import { MessageReactions } from "./message-reactions";
+} from 'lucide-react';
+import { format } from 'date-fns';
+import { ReplyQuote } from './reply-quote';
+import { MessageReactions } from './message-reactions';
 
 interface MessageBubbleProps {
   message: Message;
@@ -49,9 +49,9 @@ function LinkText({ text }: { text: string | null | undefined }) {
     const start = m.index ?? 0;
     if (start > last) nodes.push(text.slice(last, start));
     let url = m[0];
-    const tail = url.match(/[.,!?;:)\]}'"]+$/)?.[0] ?? "";
+    const tail = url.match(/[.,!?;:)\]}'"]+$/)?.[0] ?? '';
     if (tail) url = url.slice(0, url.length - tail.length);
-    const href = url.startsWith("http") ? url : `https://${url}`;
+    const href = url.startsWith('http') ? url : `https://${url}`;
     nodes.push(
       <a
         key={key++}
@@ -59,10 +59,10 @@ function LinkText({ text }: { text: string | null | undefined }) {
         target="_blank"
         rel="noopener noreferrer"
         onClick={(e) => e.stopPropagation()}
-        className="break-all text-tick-read underline underline-offset-2 hover:opacity-80"
+        className="text-tick-read break-all underline underline-offset-2 hover:opacity-80"
       >
         {url}
-      </a>,
+      </a>
     );
     if (tail) nodes.push(tail);
     last = start + m[0].length;
@@ -75,17 +75,19 @@ function LinkText({ text }: { text: string | null | undefined }) {
 // sit on the green `bubble-out` fill — so the un-read states use the
 // bubble's own foreground at low opacity (like WhatsApp's faint grey
 // ticks) and "read" flips to the signature blue double-tick.
-function StatusIcon({ status }: { status: Message["status"] }) {
+function StatusIcon({ status }: { status: Message['status'] }) {
   switch (status) {
-    case "sending":
-      return <Clock className="h-3 w-3 text-bubble-out-foreground/50" />;
-    case "sent":
-      return <Check className="h-3.5 w-3.5 text-bubble-out-foreground/60" />;
-    case "delivered":
-      return <CheckCheck className="h-3.5 w-3.5 text-bubble-out-foreground/60" />;
-    case "read":
-      return <CheckCheck className="h-3.5 w-3.5 text-tick-read" />;
-    case "failed":
+    case 'sending':
+      return <Clock className="text-bubble-out-foreground/50 h-3 w-3" />;
+    case 'sent':
+      return <Check className="text-bubble-out-foreground/60 h-3.5 w-3.5" />;
+    case 'delivered':
+      return (
+        <CheckCheck className="text-bubble-out-foreground/60 h-3.5 w-3.5" />
+      );
+    case 'read':
+      return <CheckCheck className="text-tick-read h-3.5 w-3.5" />;
+    case 'failed':
       return <XCircle className="h-3 w-3 text-red-400" />;
     default:
       return null;
@@ -94,8 +96,8 @@ function StatusIcon({ status }: { status: Message["status"] }) {
 
 function MediaUnavailable({ label }: { label: string }) {
   return (
-    <div className="flex items-center gap-2 rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-      <ImageOff className="h-4 w-4 shrink-0 text-muted-foreground" />
+    <div className="bg-muted/40 text-muted-foreground flex items-center gap-2 rounded-lg px-3 py-2 text-xs">
+      <ImageOff className="text-muted-foreground h-4 w-4 shrink-0" />
       <span>{label} unavailable</span>
     </div>
   );
@@ -108,8 +110,8 @@ function MediaUnavailable({ label }: { label: string }) {
  */
 function MediaPending({ label }: { label: string }) {
   return (
-    <div className="flex items-center gap-2 rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-      <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
+    <div className="bg-muted/40 text-muted-foreground flex items-center gap-2 rounded-lg px-3 py-2 text-xs">
+      <Loader2 className="text-muted-foreground h-4 w-4 shrink-0 animate-spin" />
       <span>Downloading {label.toLowerCase()}…</span>
     </div>
   );
@@ -127,7 +129,7 @@ function MediaFallback({
   message: Message;
   label: string;
 }) {
-  return message.media_status === "pending" ? (
+  return message.media_status === 'pending' ? (
     <MediaPending label={label} />
   ) : (
     <MediaUnavailable label={label} />
@@ -143,10 +145,10 @@ function MediaImage({ url, alt }: { url: string; alt: string }) {
     if (!url) return;
 
     // Proxy URLs need auth fetch to create blob URL
-    if (url.startsWith("/api/whatsapp/media/")) {
+    if (url.startsWith('/api/whatsapp/media/')) {
       try {
         const res = await fetch(url);
-        if (!res.ok) throw new Error("Failed to load media");
+        if (!res.ok) throw new Error('Failed to load media');
         const blob = await res.blob();
         const blobUrl = URL.createObjectURL(blob);
         setSrc(blobUrl);
@@ -164,7 +166,7 @@ function MediaImage({ url, alt }: { url: string; alt: string }) {
   useEffect(() => {
     loadImage();
     return () => {
-      if (src?.startsWith("blob:")) {
+      if (src?.startsWith('blob:')) {
         URL.revokeObjectURL(src);
       }
     };
@@ -173,23 +175,23 @@ function MediaImage({ url, alt }: { url: string; alt: string }) {
 
   if (error) {
     return (
-      <div className="flex h-40 w-60 items-center justify-center rounded-lg bg-muted">
-        <ImageOff className="h-8 w-8 text-muted-foreground" />
+      <div className="bg-muted flex h-40 w-60 items-center justify-center rounded-lg">
+        <ImageOff className="text-muted-foreground h-8 w-8" />
       </div>
     );
   }
 
   if (loading) {
     return (
-      <div className="flex h-40 w-60 items-center justify-center rounded-lg bg-muted">
-        <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      <div className="bg-muted flex h-40 w-60 items-center justify-center rounded-lg">
+        <div className="border-primary h-5 w-5 animate-spin rounded-full border-2 border-t-transparent" />
       </div>
     );
   }
 
   return (
     <img
-      src={src ?? ""}
+      src={src ?? ''}
       alt={alt}
       loading="lazy"
       decoding="async"
@@ -204,7 +206,7 @@ function MessageContent({ message }: { message: Message }) {
   // regardless of the original content type.
   if (message.deleted_at) {
     return (
-      <p className="flex items-center gap-1 text-sm italic text-muted-foreground">
+      <p className="text-muted-foreground flex items-center gap-1 text-sm italic">
         <Ban className="h-3.5 w-3.5" />
         This message was deleted
       </p>
@@ -212,14 +214,14 @@ function MessageContent({ message }: { message: Message }) {
   }
 
   switch (message.content_type) {
-    case "text":
+    case 'text':
       return (
-        <p className="whitespace-pre-wrap break-words text-sm">
+        <p className="text-sm break-words whitespace-pre-wrap">
           <LinkText text={message.content_text} />
         </p>
       );
 
-    case "image":
+    case 'image':
       return (
         <div>
           {message.media_url ? (
@@ -228,14 +230,14 @@ function MessageContent({ message }: { message: Message }) {
             <MediaFallback message={message} label="Image" />
           )}
           {message.content_text && (
-            <p className="mt-1 whitespace-pre-wrap break-words text-sm">
+            <p className="mt-1 text-sm break-words whitespace-pre-wrap">
               <LinkText text={message.content_text} />
             </p>
           )}
         </div>
       );
 
-    case "video":
+    case 'video':
       return (
         <div>
           {message.media_url ? (
@@ -248,14 +250,14 @@ function MessageContent({ message }: { message: Message }) {
             <MediaFallback message={message} label="Video" />
           )}
           {message.content_text && (
-            <p className="mt-1 whitespace-pre-wrap break-words text-sm">
+            <p className="mt-1 text-sm break-words whitespace-pre-wrap">
               <LinkText text={message.content_text} />
             </p>
           )}
         </div>
       );
 
-    case "audio":
+    case 'audio':
       return (
         <div>
           {message.media_url ? (
@@ -266,12 +268,12 @@ function MessageContent({ message }: { message: Message }) {
         </div>
       );
 
-    case "document":
+    case 'document':
       if (!message.media_url) {
         return (
           <MediaFallback
             message={message}
-            label={message.content_text || "Document"}
+            label={message.content_text || 'Document'}
           />
         );
       }
@@ -280,74 +282,72 @@ function MessageContent({ message }: { message: Message }) {
           href={message.media_url}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2 text-sm hover:bg-muted"
+          className="bg-muted/50 hover:bg-muted flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
         >
-          <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />
-          <span className="truncate">
-            {message.content_text || "Document"}
-          </span>
+          <FileText className="text-muted-foreground h-5 w-5 shrink-0" />
+          <span className="truncate">{message.content_text || 'Document'}</span>
         </a>
       );
 
-    case "template":
+    case 'template':
       return (
         <div>
-          <span className="mb-1 inline-flex items-center gap-1 rounded bg-primary/20 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+          <span className="bg-primary/20 text-primary mb-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium">
             <LayoutTemplate className="h-3 w-3" />
             Template
           </span>
           {message.content_text && (
-            <p className="mt-1 whitespace-pre-wrap break-words text-sm">
+            <p className="mt-1 text-sm break-words whitespace-pre-wrap">
               <LinkText text={message.content_text} />
             </p>
           )}
         </div>
       );
 
-    case "location":
+    case 'location':
       return (
         <div className="flex items-center gap-2 text-sm">
-          <MapPin className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <span>{message.content_text || "Location shared"}</span>
+          <MapPin className="text-muted-foreground h-4 w-4 shrink-0" />
+          <span>{message.content_text || 'Location shared'}</span>
         </div>
       );
 
-    case "contact":
+    case 'contact':
       return (
         <div className="flex items-center gap-2 text-sm">
-          <UserRound className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <span>{message.content_text || "Contact card"}</span>
+          <UserRound className="text-muted-foreground h-4 w-4 shrink-0" />
+          <span>{message.content_text || 'Contact card'}</span>
         </div>
       );
 
-    case "poll":
+    case 'poll':
       return (
         <div className="flex items-center gap-2 text-sm">
-          <BarChart3 className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <span>{message.content_text || "Poll"}</span>
+          <BarChart3 className="text-muted-foreground h-4 w-4 shrink-0" />
+          <span>{message.content_text || 'Poll'}</span>
         </div>
       );
 
-    case "call":
+    case 'call':
       return (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <div className="text-muted-foreground flex items-center gap-2 text-sm">
           <PhoneCall className="h-4 w-4 shrink-0" />
-          <span>{message.content_text || "Call"}</span>
+          <span>{message.content_text || 'Call'}</span>
         </div>
       );
 
-    case "event": {
+    case 'event': {
       // content_text is a summary: first line = name, rest = 🗓 when /
       // 📍 where / description (see formatEventSummary).
-      const [title, ...detail] = (message.content_text || "Event").split("\n");
+      const [title, ...detail] = (message.content_text || 'Event').split('\n');
       return (
-        <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-background/40 p-2 text-sm">
-          <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+        <div className="border-border/60 bg-background/40 flex items-start gap-2 rounded-lg border p-2 text-sm">
+          <CalendarClock className="text-primary mt-0.5 h-4 w-4 shrink-0" />
           <div className="min-w-0">
             <p className="font-medium break-words">{title}</p>
             {detail.length > 0 && (
-              <p className="mt-0.5 whitespace-pre-wrap break-words text-xs text-muted-foreground">
-                {detail.join("\n")}
+              <p className="text-muted-foreground mt-0.5 text-xs break-words whitespace-pre-wrap">
+                {detail.join('\n')}
               </p>
             )}
           </div>
@@ -355,7 +355,7 @@ function MessageContent({ message }: { message: Message }) {
       );
     }
 
-    case "interactive": {
+    case 'interactive': {
       // Customer tapped a reply button or list row on a message the bot
       // sent. We show the tapped option's title (already in content_text,
       // set by parseMessageContent in the webhook) with a small affordance
@@ -363,12 +363,12 @@ function MessageContent({ message }: { message: Message }) {
       // tap rather than the customer typing the same words.
       return (
         <div className="flex flex-col gap-0.5">
-          <span className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          <span className="text-muted-foreground inline-flex items-center gap-1 text-[10px] font-medium tracking-wide uppercase">
             <CornerDownLeft className="h-3 w-3" />
             Button reply
           </span>
-          <p className="whitespace-pre-wrap break-words text-sm">
-            <LinkText text={message.content_text || "[Interactive reply]"} />
+          <p className="text-sm break-words whitespace-pre-wrap">
+            <LinkText text={message.content_text || '[Interactive reply]'} />
           </p>
         </div>
       );
@@ -376,8 +376,10 @@ function MessageContent({ message }: { message: Message }) {
 
     default:
       return (
-        <p className="whitespace-pre-wrap break-words text-sm">
-          <LinkText text={message.content_text || "[Unsupported message type]"} />
+        <p className="text-sm break-words whitespace-pre-wrap">
+          <LinkText
+            text={message.content_text || '[Unsupported message type]'}
+          />
         </p>
       );
   }
@@ -390,36 +392,32 @@ export function MessageBubble({
   currentUserId,
   onToggleReaction,
 }: MessageBubbleProps) {
-  const isAgent = message.sender_type === "agent" || message.sender_type === "bot";
-  const time = format(new Date(message.created_at), "HH:mm");
+  const isAgent =
+    message.sender_type === 'agent' || message.sender_type === 'bot';
+  const time = format(new Date(message.created_at), 'HH:mm');
 
   // Row alignment + width cap are owned by <MessageActions> so its hover
   // group matches the bubble's content area, not the full row.
   return (
-    <div
-      className={cn(
-        "flex flex-col",
-        isAgent ? "items-end" : "items-start",
-      )}
-    >
+    <div className={cn('flex flex-col', isAgent ? 'items-end' : 'items-start')}>
       <div
         className={cn(
           // WhatsApp bubble: ~7.5px radius, a squared top corner on the
           // sender side, a small tail (the ::after triangle) at that
           // corner, and a soft lift shadow.
-          "relative rounded-lg px-2.5 py-1.5 shadow-sm",
+          'relative rounded-lg px-2.5 py-1.5 shadow-sm',
           "after:absolute after:top-0 after:h-0 after:w-0 after:border-solid after:content-['']",
           isAgent
             ? [
-                "rounded-tr-none bg-bubble-out text-bubble-out-foreground",
+                'bg-bubble-out text-bubble-out-foreground rounded-tr-none',
                 // right-pointing tail in the bubble colour
-                "after:right-[-8px] after:border-t-[8px] after:border-r-[8px] after:border-t-bubble-out after:border-r-transparent",
+                'after:border-t-bubble-out after:right-[-8px] after:border-t-[8px] after:border-r-[8px] after:border-r-transparent',
               ]
             : [
-                "rounded-tl-none bg-bubble-in text-bubble-in-foreground",
+                'bg-bubble-in text-bubble-in-foreground rounded-tl-none',
                 // left-pointing tail in the bubble colour
-                "after:left-[-8px] after:border-t-[8px] after:border-l-[8px] after:border-t-bubble-in after:border-l-transparent",
-              ],
+                'after:border-t-bubble-in after:left-[-8px] after:border-t-[8px] after:border-l-[8px] after:border-l-transparent',
+              ]
         )}
       >
         {reply && (
@@ -430,50 +428,53 @@ export function MessageBubble({
           />
         )}
         {!isAgent && message.author_name && (
-          <div className="mb-0.5 text-xs font-semibold text-primary">
+          <div className="text-primary mb-0.5 text-xs font-semibold">
             {message.author_name}
           </div>
         )}
         <MessageContent message={message} />
         <div
           className={cn(
-            "mt-1 flex items-center gap-1",
-            isAgent ? "justify-end" : "justify-start",
+            'mt-1 flex items-center gap-1',
+            isAgent ? 'justify-end' : 'justify-start'
           )}
         >
           {message.starred_at && (
             <Star
               className={cn(
-                "h-2.5 w-2.5 fill-current",
-                isAgent ? "text-bubble-out-foreground/70" : "text-amber-400",
+                'h-2.5 w-2.5 fill-current',
+                isAgent ? 'text-bubble-out-foreground/70' : 'text-amber-400'
               )}
               aria-label="Starred"
             />
           )}
-          {message.pinned_until && new Date(message.pinned_until) > new Date() && (
-            <Pin
-              className={cn(
-                "h-2.5 w-2.5 fill-current",
-                isAgent ? "text-bubble-out-foreground/70" : "text-primary",
-              )}
-              aria-label="Pinned"
-            />
-          )}
+          {message.pinned_until &&
+            new Date(message.pinned_until) > new Date() && (
+              <Pin
+                className={cn(
+                  'h-2.5 w-2.5 fill-current',
+                  isAgent ? 'text-bubble-out-foreground/70' : 'text-primary'
+                )}
+                aria-label="Pinned"
+              />
+            )}
           <span
             className={cn(
-              "text-[10px]",
+              'text-[10px]',
               // Outbound bubbles sit on the green `bubble-out` fill, so
               // the timestamp reads against that at low opacity (like
               // WhatsApp's faint meta text). Inbound uses muted.
               isAgent
-                ? "text-bubble-out-foreground/60"
-                : "text-muted-foreground",
+                ? 'text-bubble-out-foreground/60'
+                : 'text-muted-foreground'
             )}
           >
-            {message.edited_at && !message.deleted_at ? "edited · " : ""}
+            {message.edited_at && !message.deleted_at ? 'edited · ' : ''}
             {time}
           </span>
-          {isAgent && !message.deleted_at && <StatusIcon status={message.status} />}
+          {isAgent && !message.deleted_at && (
+            <StatusIcon status={message.status} />
+          )}
         </div>
       </div>
       {reactions && reactions.length > 0 && onToggleReaction && (
