@@ -1,7 +1,10 @@
 import { redirect } from 'next/navigation';
+import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { ShieldAlert } from 'lucide-react';
 
 import { getOperator } from '@/lib/operator/session';
+import { OperatorSignOut } from './sign-out';
 
 /**
  * Guards everything in the operator plane.
@@ -10,9 +13,38 @@ import { getOperator } from '@/lib/operator/session';
  * any company — is not consulted and cannot substitute, which is what
  * makes "no escalation from a customer session" true rather than
  * intended.
+ *
+ * The banner is not decoration. Every page below this shows other
+ * people's businesses, and the console looks enough like the product that
+ * it would otherwise be easy to forget whose data is on screen.
  */
 export default async function OperatorLayout({ children }: { children: ReactNode }) {
   const operator = await getOperator();
   if (!operator) redirect('/operator/login');
-  return <>{children}</>;
+
+  return (
+    <div className="bg-background text-foreground min-h-screen">
+      <div className="flex items-center justify-center gap-2 bg-amber-500/15 px-4 py-1.5 text-xs text-amber-600 dark:text-amber-400">
+        <ShieldAlert className="h-3.5 w-3.5" />
+        Operator console — you are looking at customer data. Every action is recorded.
+      </div>
+
+      <header className="border-border border-b">
+        <nav className="mx-auto flex h-14 max-w-5xl items-center gap-6 px-5 text-sm">
+          <Link href="/operator" className="font-semibold">
+            Companies
+          </Link>
+          <Link href="/operator/audit" className="text-muted-foreground hover:text-foreground">
+            Audit trail
+          </Link>
+          <div className="ml-auto flex items-center gap-3">
+            <span className="text-muted-foreground text-xs">{operator.name}</span>
+            <OperatorSignOut />
+          </div>
+        </nav>
+      </header>
+
+      {children}
+    </div>
+  );
 }

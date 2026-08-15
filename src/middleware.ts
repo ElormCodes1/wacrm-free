@@ -4,8 +4,22 @@ import { NextResponse, type NextRequest } from 'next/server'
 /**
  * First path segments the app serves itself. Anything else in that
  * position is a company address.
+ *
+ * 'operator' has to be here even though the operator plane guards itself:
+ * without it, /operator/audit reads as the company "operator" and gets
+ * redirected to the CUSTOMER sign-in — so the operator console appears to
+ * demand a customer session it never uses. /operator alone was fine (one
+ * segment) and /operator/login was fine (the login exception), which is
+ * why the gap only showed once the console grew a second page.
  */
-const TOP_LEVEL_ROUTES = new Set(['api', 'join', 'login', 'signup', 'forgot-password'])
+const TOP_LEVEL_ROUTES = new Set([
+  'api',
+  'join',
+  'login',
+  'signup',
+  'forgot-password',
+  'operator',
+])
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })

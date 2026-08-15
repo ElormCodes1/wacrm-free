@@ -1,0 +1,246 @@
+import 'server-only';
+
+import { privilegedClient } from '@/lib/supabase/privileged';
+
+/**
+ * Reading customer data from the operator plane.
+ *
+ * Every query here bypasses RLS, which is the whole point — an operator
+ * looks across companies and RLS exists to stop exactly that. Keeping the
+ * queries in one module rather than scattered through pages means the set
+ * of things an operator can see is a list you can read in one sitting,
+ * instead of something you'd have to go looking for.
+ *
+ * Nothing here checks whether the caller IS an operator. That is the
+ * layout's job and it runs first; duplicating the check in every function
+ * would suggest the pages might be reachable without it, which they are
+ * not.
+ */
+
+export type CompanyStatus = 'active' | 'suspended';
+
+export interface CompanySummary {
+  id: string;
+  slug: string | null;
+  name: string;
+  status: CompanyStatus;
+  createdAt: string;
+  suspendedAt: string | null;
+  suspendedReason: string | null;
+  members: number;
+  numbers: number;
+  contacts: number;
+}
+
+export interface CompanyMember {
+  email: string | null;
+  fullName: string | null;
+  role: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface CompanyNumber {
+  label: string | null;
+  status: string | null;
+  connectionState: string | null;
+  instanceName: string | null;
+  connectedAt: string | null;
+}
+
+export interface CompanyDetail extends CompanySummary {
+  membersList: CompanyMember[];
+  numbersList: CompanyNumber[];
+  conversations: number;
+  lastActivityAt: string | null;
+}
+
+/** Count rows for one account without fetching them. */
+async function countFor(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any,
+  table: string,
+  accountId: string
+): Promise<number> {
+  const { count } = await db
+    .from(table)
+    .select('id', { count: 'exact', head: true })
+    .eq('account_id', accountId);
+  return count ?? 0;
+}
+
+/**
+ * Every company, newest first, optionally filtered.
+ *
+ * The filter matches name and address rather than being a full-text
+ * search: an operator arrives here knowing which customer they are
+ * looking for, usually from an email or a support message.
+ */
+export async function listCompanies(query?: string): Promise<CompanySummary[]> {
+  const db = privilegedClient('operator');
+
+  let request = db
+    .from('accounts')
+    .select('id, slug, name, status, created_at, suspended_at, suspended_reason')
+    .order('created_at', { ascending: false });
+
+  const term = query?.trim();
+  if (term) {
+    // Escape the PostgREST or() grammar: a comma or parenthesis in the
+    // search box would otherwise be read as more filters rather than as
+    // text, which at best breaks the query and at worst widens it.
+    const safe = term.replace(/[,()\\]/g, ' ').trim();
+    if (safe) request = request.or(`name.ilike.%${safe}%,slug.ilike.%${safe}%`);
+  }
+
+  const { data } = await request;
+  const rows = (data ?? []) as Record<string, unknown>[];
+
+  return Promise.all(
+    rows.map(async (row) => {
+      const id = row.id as string;
+      const [members, numbers, contacts] = await Promise.all([
+        countFor(db, 'profiles', id),
+        countFor(db, 'whatsapp_config', id),
+        countFor(db, 'contacts', id),
+      ]);
+      return {
+        id,
+        slug: (row.slug as string) ?? null,
+        name: row.name as string,
+        status: row.status as CompanyStatus,
+        createdAt: row.created_at as string,
+        suspendedAt: (row.suspended_at as string) ?? null,
+        suspendedReason: (row.suspended_reason as string) ?? null,
+        members,
+        numbers,
+        contacts,
+      };
+    })
+  );
+}
+
+/** One company in full, or null if the address names nothing. */
+export async function getCompanyDetail(slug: string): Promise<CompanyDetail | null> {
+  const db = privilegedClient('operator');
+
+  const { data: account } = await db
+    .from('accounts')
+    .select('id, slug, name, status, created_at, suspended_at, suspended_reason')
+    .eq('slug', slug)
+    .maybeSingle();
+  if (!account) return null;
+
+  const id = account.id as string;
+
+  const [membersRes, numbersRes, contacts, conversations, lastMessage] = await Promise.all([
+    db
+      .from('profiles')
+      .select('email, full_name, account_role, is_active, created_at')
+      .eq('account_id', id)
+      .order('created_at', { ascending: true }),
+    db
+      .from('whatsapp_config')
+      .select('label, status, connection_state, instance_name, connected_at')
+      .eq('account_id', id)
+      .order('created_at', { ascending: true }),
+    countFor(db, 'contacts', id),
+    countFor(db, 'conversations', id),
+    db
+      .from('conversations')
+      .select('last_message_at')
+      .eq('account_id', id)
+      .not('last_message_at', 'is', null)
+      .order('last_message_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  const members = (membersRes.data ?? []) as Record<string, unknown>[];
+  const numbers = (numbersRes.data ?? []) as Record<string, unknown>[];
+
+  return {
+    id,
+    slug: (account.slug as string) ?? null,
+    name: account.name as string,
+    status: account.status as CompanyStatus,
+    createdAt: account.created_at as string,
+    suspendedAt: (account.suspended_at as string) ?? null,
+    suspendedReason: (account.suspended_reason as string) ?? null,
+    members: members.length,
+    numbers: numbers.length,
+    contacts,
+    conversations,
+    lastActivityAt: (lastMessage.data?.last_message_at as string) ?? null,
+    membersList: members.map((m) => ({
+      email: (m.email as string) ?? null,
+      fullName: (m.full_name as string) ?? null,
+      role: (m.account_role as string) ?? 'viewer',
+      isActive: m.is_active !== false,
+      createdAt: m.created_at as string,
+    })),
+    numbersList: numbers.map((n) => ({
+      label: (n.label as string) ?? null,
+      status: (n.status as string) ?? null,
+      connectionState: (n.connection_state as string) ?? null,
+      instanceName: (n.instance_name as string) ?? null,
+      connectedAt: (n.connected_at as string) ?? null,
+    })),
+  };
+}
+
+export interface AuditEntry {
+  id: string;
+  operatorName: string | null;
+  action: string;
+  targetAccountId: string | null;
+  targetCompany: string | null;
+  detail: Record<string, unknown> | null;
+  ip: string | null;
+  occurredAt: string;
+}
+
+/**
+ * The operator trail.
+ *
+ * Written on every operator action already; this is the first thing that
+ * reads it. A record nobody can look at deters nobody, so the console
+ * showing it is what turns it from a table into an accountability
+ * measure.
+ */
+export async function listOperatorAudit(limit = 200): Promise<AuditEntry[]> {
+  const db = privilegedClient('operator');
+
+  const { data } = await db
+    .from('operator_audit')
+    .select('id, operator_name, action, target_account_id, detail, ip, occurred_at')
+    .order('occurred_at', { ascending: false })
+    .limit(limit);
+
+  const rows = (data ?? []) as Record<string, unknown>[];
+
+  // Resolve company names in one query rather than one per row.
+  const ids = [...new Set(rows.map((r) => r.target_account_id).filter(Boolean))] as string[];
+  const names = new Map<string, string>();
+  if (ids.length) {
+    const { data: accounts } = await db.from('accounts').select('id, name').in('id', ids);
+    for (const a of (accounts ?? []) as Record<string, unknown>[]) {
+      names.set(a.id as string, a.name as string);
+    }
+  }
+
+  return rows.map((r) => ({
+    id: r.id as string,
+    operatorName: (r.operator_name as string) ?? null,
+    action: r.action as string,
+    targetAccountId: (r.target_account_id as string) ?? null,
+    // A deleted company keeps its audit rows (target_account_id is SET
+    // NULL), so an unresolvable id is expected rather than an error.
+    targetCompany: r.target_account_id
+      ? (names.get(r.target_account_id as string) ?? '(deleted company)')
+      : null,
+    detail: (r.detail as Record<string, unknown>) ?? null,
+    ip: (r.ip as string) ?? null,
+    occurredAt: r.occurred_at as string,
+  }));
+}

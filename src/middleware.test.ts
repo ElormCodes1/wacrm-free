@@ -116,3 +116,48 @@ describe("middleware — refreshed auth cookies survive redirects", () => {
     expect(res.cookies.get(ROTATED.name)?.value).toBe(ROTATED.value);
   });
 });
+
+/**
+ * The company-segment rule decides, structurally, that anything with a
+ * non-app word in the first position is a company address. That is what
+ * makes new company pages protected the day they are added — but it also
+ * means every genuinely top-level route has to be declared, and the
+ * declaration is a hand-kept list.
+ *
+ * This is where that list went wrong once already: /operator/audit was
+ * read as the company "operator" and redirected to the CUSTOMER sign-in,
+ * so the operator console demanded a session it never uses. /operator on
+ * its own was fine (one segment), and /operator/login was fine (the login
+ * exception), so the gap only appeared once the console grew a second
+ * page — long after the list was written.
+ *
+ * Deriving the list at request time is not possible: middleware cannot
+ * read the filesystem. Deriving it in a TEST is, so a new top-level route
+ * fails here until it is declared, rather than silently sending its
+ * visitors to the wrong sign-in.
+ */
+describe("middleware — every top-level route is declared", () => {
+  it("declares every real top-level route directory", async () => {
+    const { routeSegments } = await import("@/lib/tenancy/reserved-slugs");
+    const { readFileSync } = await import("node:fs");
+
+    const onDisk = routeSegments("src/app");
+
+    // Read the set out of the source rather than exporting it: the export
+    // would exist only for this test, and middleware.ts is loaded by the
+    // edge runtime where an extra export is not free.
+    const source = readFileSync("src/middleware.ts", "utf8");
+    const block = source.match(/TOP_LEVEL_ROUTES\s*=\s*new Set\(\[([\s\S]*?)\]\)/);
+    expect(block, "could not find TOP_LEVEL_ROUTES in middleware.ts").toBeTruthy();
+    const declared = new Set(
+      [...block![1].matchAll(/['"]([^'"]+)['"]/g)].map((m) => m[1]),
+    );
+
+    const missing = onDisk.filter((segment) => !declared.has(segment));
+    expect(
+      missing,
+      `these top-level routes are not declared in TOP_LEVEL_ROUTES, so a URL ` +
+        `two segments deep under them redirects to the customer sign-in: ${missing.join(", ")}`,
+    ).toEqual([]);
+  });
+});
