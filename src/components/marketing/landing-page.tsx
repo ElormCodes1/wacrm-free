@@ -1,15 +1,34 @@
+import type { ReactNode } from 'react';
 import Link from 'next/link';
 import {
   ArrowRight,
   Bot,
+  CheckCheck,
   CheckCircle2,
+  CircleDashed,
+  FileText,
   Inbox,
+  Kanban,
+  LayoutDashboard,
   ListChecks,
+  ListTodo,
   Megaphone,
+  Mic,
+  MoreVertical,
+  Paperclip,
+  Phone,
+  Play,
   QrCode,
+  Radio,
+  Search,
+  SendHorizontal,
   Server,
+  Settings,
   ShieldCheck,
+  ShoppingBag,
+  Smile,
   Users,
+  UsersRound,
   Workflow,
   Zap,
 } from 'lucide-react';
@@ -33,6 +52,20 @@ import { ModeToggle } from '@/components/layout/mode-toggle';
  * and nothing here needs to react to anything: the only interactive
  * elements are links.
  */
+
+const REPO_URL = 'https://github.com/ElormCodes1/wacrm-free';
+
+/**
+ * lucide-react dropped its brand icons, so the GitHub mark is inline.
+ * Fifteen lines of path data beats a dependency for one glyph.
+ */
+function GithubMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden className={className}>
+      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.4 7.4 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+    </svg>
+  );
+}
 
 const FEATURES = [
   {
@@ -97,6 +130,15 @@ export function LandingPage() {
             </a>
             <a href="#self-host" className="hover:text-foreground transition-colors">
               Self-hosting
+            </a>
+            <a
+              href={REPO_URL}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="hover:text-foreground inline-flex items-center gap-1.5 transition-colors"
+            >
+              <GithubMark className="h-4 w-4" />
+              GitHub
             </a>
           </div>
 
@@ -304,14 +346,23 @@ export function LandingPage() {
                     The hosted version is the same software, kept up to date and backed
                     up, for people who would rather not run it.
                   </p>
+                  <a
+                    href={REPO_URL}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="border-border bg-background hover:bg-card-2 mt-6 inline-flex h-10 items-center gap-2 rounded-lg border px-5 text-sm font-semibold transition-colors"
+                  >
+                    <GithubMark className="h-4 w-4" />
+                    View the source
+                  </a>
                 </div>
 
-                <div className="border-border bg-background rounded-xl border p-5 font-mono text-xs">
+                <div className="border-border bg-background overflow-x-auto rounded-xl border p-5 font-mono text-xs">
                   <p className="text-muted-foreground"># bring up the stack</p>
-                  <p className="mt-2">
-                    <span className="text-primary">$</span> git clone wacrm-free
+                  <p className="mt-2 whitespace-nowrap">
+                    <span className="text-primary">$</span> git clone {REPO_URL}.git
                   </p>
-                  <p className="mt-1">
+                  <p className="mt-1 whitespace-nowrap">
                     <span className="text-primary">$</span> docker compose up -d
                   </p>
                   <p className="text-muted-foreground mt-3"># then scan the QR code</p>
@@ -359,6 +410,15 @@ export function LandingPage() {
             <span>— a WhatsApp CRM you can own.</span>
           </div>
           <div className="flex items-center gap-6">
+            <a
+              href={REPO_URL}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="hover:text-foreground inline-flex items-center gap-1.5 transition-colors"
+            >
+              <GithubMark className="h-4 w-4" />
+              Source
+            </a>
             <Link href="/login" className="hover:text-foreground transition-colors">
               Sign in
             </Link>
@@ -395,21 +455,53 @@ function Pillar({
 /**
  * A still of the inbox.
  *
- * Deliberately drawn rather than screenshotted: a screenshot would either
- * show a real customer's messages or go stale the first time the UI moves,
- * and this stays honest about being an illustration. The names are
+ * Deliberately drawn rather than screenshotted. A screenshot would either
+ * show a real customer's messages or go stale the first time the UI moves;
+ * this stays honest about being an illustration, and the names are
  * obviously fictional for the same reason.
+ *
+ * It does have to be ACCURATE though — an illustration simpler than the
+ * product undersells it, and one showing things the product cannot do is a
+ * lie. So everything below is something actually built: the four panes,
+ * the real sidebar items in their real order, the real filter chips
+ * (All/Unread/Open/Closed/Groups), and message kinds the inbox genuinely
+ * renders — text, voice notes, documents, reply quotes, @mentions,
+ * reactions and delivery receipts.
+ *
+ * Panes drop away as the screen narrows, in the same order the app drops
+ * them: contact panel below xl, sidebar below lg, thread below sm.
  */
-function InboxPreview() {
-  const threads = [
-    { name: 'Ama Boateng', last: 'Is the blue one still available?', time: '2m', unread: 2 },
-    { name: 'Kwesi Mensah', last: 'Voice note (0:14)', time: '11m', unread: 0 },
-    { name: 'Wholesale Buyers', last: 'Yaw: sending the list now', time: '1h', unread: 5 },
-    { name: 'Adjoa Nyarko', last: 'Thank you! 🙏', time: '3h', unread: 0 },
-  ];
 
+const NAV = [
+  { icon: LayoutDashboard, label: 'Dashboard' },
+  { icon: Inbox, label: 'Inbox', active: true, badge: 7 },
+  { icon: ListTodo, label: 'Tasks' },
+  { icon: Users, label: 'Contacts' },
+  { icon: Kanban, label: 'Pipelines' },
+  { icon: Megaphone, label: 'Broadcasts' },
+  { icon: Radio, label: 'Channels' },
+  { icon: UsersRound, label: 'Communities' },
+  { icon: ShoppingBag, label: 'Store' },
+  { icon: CircleDashed, label: 'Status' },
+  { icon: Zap, label: 'Automations' },
+  { icon: Workflow, label: 'Flows' },
+  { icon: Bot, label: 'AI Agents' },
+  { icon: Settings, label: 'Settings' },
+];
+
+const THREADS = [
+  { name: 'Ama Boateng', last: 'Please do 👍', time: '2m', unread: 2, active: true, tint: 'bg-[#7C6BF2]' },
+  { name: 'Kwesi Mensah', last: '🎤 Voice note · 0:14', time: '11m', unread: 0, tint: 'bg-[#E0803C]' },
+  { name: 'Wholesale Buyers', last: 'Yaw: sending the list now', time: '1h', unread: 5, tint: 'bg-[#3C8CE0]' },
+  { name: 'Adjoa Nyarko', last: '📄 invoice-4417.pdf', time: '3h', unread: 0, tint: 'bg-[#C74B8B]' },
+  { name: 'Kofi Asante', last: 'You: Delivered on Friday', time: '5h', unread: 0, tint: 'bg-[#2FA36B]' },
+];
+
+const FILTER_CHIPS = ['All', 'Unread', 'Open', 'Closed', 'Groups'];
+
+function InboxPreview() {
   return (
-    <div className="border-border bg-card mx-auto mt-16 max-w-4xl overflow-hidden rounded-xl border shadow-2xl">
+    <div className="border-border bg-card mx-auto mt-16 overflow-hidden rounded-xl border shadow-2xl">
       {/* window chrome */}
       <div className="border-border bg-card-2 flex items-center gap-2 border-b px-4 py-2.5">
         <div className="flex gap-1.5">
@@ -417,55 +509,257 @@ function InboxPreview() {
           <span className="h-2.5 w-2.5 rounded-full bg-[#FEBC2E]" />
           <span className="h-2.5 w-2.5 rounded-full bg-[#28C840]" />
         </div>
-        <span className="text-muted-foreground ml-2 font-mono text-xs">Inbox</span>
+        <span className="text-muted-foreground ml-2 truncate font-mono text-[11px]">
+          app.example.com/your-company/inbox
+        </span>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,15rem)_1fr]">
-        {/* thread list */}
-        <div className="border-border divide-border divide-y border-r">
-          {threads.map((t, i) => (
+      <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,13.5rem)_1fr] lg:grid-cols-[9.5rem_minmax(0,13.5rem)_1fr] xl:grid-cols-[10.5rem_minmax(0,14rem)_1fr_12.5rem]">
+        {/* ---------- sidebar ---------- */}
+        <div className="border-border bg-card-2 hidden flex-col border-r py-2 lg:flex">
+          {NAV.map((item) => (
             <div
-              key={t.name}
-              className={`flex items-center gap-3 px-4 py-3 ${i === 0 ? 'bg-primary-soft' : ''}`}
+              key={item.label}
+              className={`mx-2 flex items-center gap-2.5 rounded-md px-2.5 py-[7px] text-[11px] ${
+                item.active ? 'bg-primary-soft text-primary font-medium' : 'text-muted-foreground'
+              }`}
             >
-              <div className="bg-muted text-muted-foreground flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold">
-                {t.name.slice(0, 1)}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-baseline justify-between gap-2">
-                  <p className="truncate text-sm font-medium">{t.name}</p>
-                  <span className="text-muted-foreground shrink-0 text-[10px]">{t.time}</span>
-                </div>
-                <p className="text-muted-foreground truncate text-xs">{t.last}</p>
-              </div>
-              {t.unread > 0 && (
-                <span className="bg-primary text-primary-foreground flex h-4.5 min-w-4.5 items-center justify-center rounded-full px-1 text-[10px] font-semibold">
-                  {t.unread}
+              <item.icon className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{item.label}</span>
+              {item.badge ? (
+                <span className="bg-primary text-primary-foreground ml-auto rounded-full px-1.5 text-[9px] font-semibold">
+                  {item.badge}
                 </span>
-              )}
+              ) : null}
             </div>
           ))}
         </div>
 
-        {/* conversation */}
-        <div className="hidden flex-col justify-end gap-3 p-5 sm:flex">
-          <div className="bg-muted max-w-[70%] self-start rounded-2xl rounded-bl-sm px-3.5 py-2 text-sm">
-            Is the blue one still available?
-          </div>
-          <div className="bg-primary text-primary-foreground max-w-[70%] self-end rounded-2xl rounded-br-sm px-3.5 py-2 text-sm">
-            Yes — two left. Want me to hold one for you?
-          </div>
-          <div className="bg-muted max-w-[70%] self-start rounded-2xl rounded-bl-sm px-3.5 py-2 text-sm">
-            Please do 👍
-          </div>
-          <div className="border-border mt-2 flex items-center gap-2 border-t pt-3">
-            <div className="border-border bg-background text-muted-foreground flex-1 rounded-full border px-3.5 py-2 text-xs">
-              Type a message…
+        {/* ---------- conversation list ---------- */}
+        <div className="border-border flex min-w-0 flex-col border-r">
+          <div className="border-border space-y-2 border-b px-3 py-2.5">
+            <div className="border-border bg-background text-muted-foreground flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-[11px]">
+              <Search className="h-3 w-3 shrink-0" />
+              <span className="truncate">Search conversations...</span>
             </div>
-            <div className="bg-primary h-8 w-8 shrink-0 rounded-full" />
+            <div className="flex gap-1">
+              {FILTER_CHIPS.map((chip, i) => (
+                <span
+                  key={chip}
+                  className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9.5px] ${
+                    i === 0
+                      ? 'bg-primary text-primary-foreground font-medium'
+                      : 'bg-muted text-muted-foreground'
+                  }`}
+                >
+                  {chip}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="divide-border divide-y">
+            {THREADS.map((t) => (
+              <div
+                key={t.name}
+                className={`flex items-center gap-2.5 px-3 py-2.5 ${t.active ? 'bg-primary-soft' : ''}`}
+              >
+                <div
+                  className={`${t.tint} flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white`}
+                >
+                  {t.name.slice(0, 1)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <p className="truncate text-[11.5px] font-medium">{t.name}</p>
+                    <span className="text-muted-foreground shrink-0 text-[9px]">{t.time}</span>
+                  </div>
+                  <p className="text-muted-foreground truncate text-[10.5px]">{t.last}</p>
+                </div>
+                {t.unread > 0 && (
+                  <span className="bg-primary text-primary-foreground flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[9px] font-semibold">
+                    {t.unread}
+                  </span>
+                )}
+              </div>
+            ))}
           </div>
         </div>
+
+        {/* ---------- thread ---------- */}
+        <div className="hidden min-w-0 flex-col sm:flex">
+          <div className="border-border flex items-center gap-2.5 border-b px-4 py-2.5">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#7C6BF2] text-[10px] font-semibold text-white">
+              A
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[12px] font-medium">Ama Boateng</p>
+              <p className="text-muted-foreground truncate text-[10px]">
+                +233 24 ••• 118 · Sales line
+              </p>
+            </div>
+            <span className="bg-primary-soft text-primary hidden shrink-0 rounded-full px-2 py-0.5 text-[9px] font-medium md:inline">
+              Assigned · Yaw
+            </span>
+            <Phone className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+            <MoreVertical className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+          </div>
+
+          <div className="flex flex-1 flex-col justify-end gap-2 px-4 py-3">
+            <div className="flex justify-center">
+              <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-[9px]">
+                Today
+              </span>
+            </div>
+
+            <Bubble side="in">Good morning — do you still have the ceramic set?</Bubble>
+
+            <Bubble side="out" time="11:52">
+              Morning! Yes, in blue and cream.
+            </Bubble>
+
+            <Bubble side="in">Is the blue one still available?</Bubble>
+
+            <Bubble side="out" time="12:01">
+              Yes — two left. Want me to hold one for you?
+            </Bubble>
+
+            {/* voice note */}
+            <Bubble side="in">
+              <span className="flex items-center gap-2">
+                <Play className="h-3.5 w-3.5 shrink-0" />
+                <span className="flex items-end gap-[2px]">
+                  {[6, 10, 4, 12, 8, 14, 5, 9, 3, 11, 7, 4].map((h, i) => (
+                    <span
+                      key={i}
+                      style={{ height: `${h}px` }}
+                      className="bg-muted-foreground/60 w-[2px] rounded-full"
+                    />
+                  ))}
+                </span>
+                <span className="text-[10px] opacity-70">0:14</span>
+              </span>
+            </Bubble>
+
+            {/* a reply quote, and an @mention that resolves to a teammate */}
+            <Bubble side="out" time="12:04">
+              <span className="border-primary-foreground/40 mb-1 block border-l-2 pl-2 text-[10px] opacity-80">
+                Is the blue one still available?
+              </span>
+              Holding it now —{' '}
+              <span className="bg-primary-foreground/20 rounded px-1 font-medium">@Kwesi</span> will
+              package it.
+            </Bubble>
+
+            {/* document */}
+            <Bubble side="in">
+              <span className="flex items-center gap-2">
+                <FileText className="h-4 w-4 shrink-0 opacity-70" />
+                <span className="min-w-0">
+                  <span className="block truncate text-[11px]">receipt-0912.pdf</span>
+                  <span className="text-[9px] opacity-60">PDF · 84 KB</span>
+                </span>
+              </span>
+            </Bubble>
+
+            <div className="flex justify-start">
+              <span className="border-border bg-card-2 -mt-1 rounded-full border px-1.5 py-0.5 text-[10px]">
+                👍 1
+              </span>
+            </div>
+          </div>
+
+          <div className="border-border flex items-center gap-2 border-t px-4 py-2.5">
+            <Paperclip className="text-muted-foreground h-4 w-4 shrink-0" />
+            <Smile className="text-muted-foreground hidden h-4 w-4 shrink-0 md:block" />
+            <div className="border-border bg-background text-muted-foreground min-w-0 flex-1 truncate rounded-full border px-3 py-1.5 text-[11px]">
+              Type a message…
+            </div>
+            <Mic className="text-muted-foreground h-4 w-4 shrink-0" />
+            <span className="bg-primary text-primary-foreground flex h-7 w-7 shrink-0 items-center justify-center rounded-full">
+              <SendHorizontal className="h-3.5 w-3.5" />
+            </span>
+          </div>
+        </div>
+
+        {/* ---------- contact panel ---------- */}
+        <div className="border-border hidden flex-col gap-3.5 border-l px-3 py-4 xl:flex">
+          <div className="flex flex-col items-center text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#7C6BF2] text-sm font-semibold text-white">
+              A
+            </div>
+            <p className="mt-2 text-[11.5px] font-medium">Ama Boateng</p>
+            <p className="text-muted-foreground text-[10px]">+233 24 ••• 118</p>
+          </div>
+
+          <PanelSection title="Tags">
+            <div className="flex flex-wrap gap-1">
+              {['returning', 'accra', 'wholesale'].map((tag) => (
+                <span
+                  key={tag}
+                  className="bg-primary-soft text-primary rounded-full px-1.5 py-0.5 text-[9px]"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          </PanelSection>
+
+          <PanelSection title="Deal">
+            <div className="border-border bg-card-2 rounded-md border px-2 py-1.5">
+              <p className="text-[10.5px] font-medium">Bulk order — 40 units</p>
+              <p className="text-muted-foreground mt-0.5 text-[9px]">Negotiation · GHS 4,800</p>
+            </div>
+          </PanelSection>
+
+          <PanelSection title="Notes">
+            <p className="text-muted-foreground text-[10px] leading-relaxed">
+              Prefers delivery on Fridays. Pays on collection.
+            </p>
+          </PanelSection>
+        </div>
       </div>
+    </div>
+  );
+}
+
+function PanelSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div>
+      <p className="text-muted-foreground mb-1.5 text-[9px] font-semibold tracking-wider uppercase">
+        {title}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+/** One message. Passing `time` adds the timestamp and read receipt. */
+function Bubble({
+  side,
+  time,
+  children,
+}: {
+  side: 'in' | 'out';
+  time?: string;
+  children: ReactNode;
+}) {
+  const outbound = side === 'out';
+  return (
+    <div
+      className={`max-w-[80%] rounded-2xl px-3 py-1.5 text-[11.5px] leading-snug ${
+        outbound
+          ? 'bg-primary text-primary-foreground self-end rounded-br-sm'
+          : 'bg-muted self-start rounded-bl-sm'
+      }`}
+    >
+      {children}
+      {time && (
+        <span className="mt-0.5 flex items-center justify-end gap-1 text-[9px] opacity-70">
+          {time}
+          <CheckCheck className="h-3 w-3" />
+        </span>
+      )}
     </div>
   );
 }
