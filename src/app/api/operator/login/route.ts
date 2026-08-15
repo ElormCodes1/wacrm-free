@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 
 import { privilegedClient } from '@/lib/supabase/privileged';
 import { issueOperatorSession, recordOperatorAction } from '@/lib/operator/session';
+import { requiresSecondFactor, verifySecondFactor } from '@/lib/operator/two-factor';
 
 /**
  * The operator entrance.
@@ -18,9 +19,10 @@ import { issueOperatorSession, recordOperatorAction } from '@/lib/operator/sessi
  */
 export async function POST(request: Request) {
   try {
-    const { email, password } = (await request.json().catch(() => ({}))) as {
+    const { email, password, code } = (await request.json().catch(() => ({}))) as {
       email?: string;
       password?: string;
+      code?: string;
     };
     if (!email || !password) {
       return NextResponse.json({ error: 'Email and password are required' }, { status: 400 });
@@ -54,7 +56,39 @@ export async function POST(request: Request) {
 
     if (!operator || operator.is_active === false) return deny();
 
-    await issueOperatorSession(operator.user_id as string, operator.name as string);
+    const userId = operator.user_id as string;
+
+    // The second factor, when they have one. Asked for only AFTER the
+    // password is known good, so the prompt itself never reveals whether
+    // an address belongs to an operator.
+    if (await requiresSecondFactor(userId)) {
+      if (!code) {
+        return NextResponse.json({ mfaRequired: true }, { status: 200 });
+      }
+      const check = await verifySecondFactor(userId, code);
+      if (!check.ok) {
+        await recordOperatorAction({
+          operator: { userId, name: operator.name as string, sessionId: 'sign-in' },
+          action: 'operator.mfa-failed',
+          ip: request.headers.get('x-forwarded-for'),
+        });
+        return NextResponse.json(
+          { mfaRequired: true, error: 'That code is not right' },
+          { status: 401 }
+        );
+      }
+      if (check.usedRecoveryCode) {
+        // Recorded loudly: a recovery code means somebody lost their
+        // authenticator, or somebody else is using their codes.
+        await recordOperatorAction({
+          operator: { userId, name: operator.name as string, sessionId: 'sign-in' },
+          action: 'operator.recovery-code-used',
+          ip: request.headers.get('x-forwarded-for'),
+        });
+      }
+    }
+
+    await issueOperatorSession(userId, operator.name as string);
     await recordOperatorAction({
       operator: {
         userId: operator.user_id as string,

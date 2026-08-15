@@ -4,13 +4,21 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { LayoutDashboard, Building2, CreditCard, ScrollText, LogOut } from 'lucide-react';
+import {
+  LayoutDashboard,
+  Building2,
+  CreditCard,
+  ScrollText,
+  ShieldCheck,
+  LogOut,
+} from 'lucide-react';
 
 const ITEMS = [
   { href: '/operator', label: 'Overview', icon: LayoutDashboard, exact: true },
   { href: '/operator/companies', label: 'Companies', icon: Building2 },
   { href: '/operator/billing', label: 'Billing', icon: CreditCard },
   { href: '/operator/audit', label: 'Audit trail', icon: ScrollText },
+  { href: '/operator/security', label: 'Your security', icon: ShieldCheck },
 ];
 
 export function OperatorNav() {

@@ -15,6 +15,10 @@ export default function OperatorLogin() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
+  // Set once the server says this account has a second factor. The form
+  // then asks for the code instead of re-asking for the password.
+  const [needsCode, setNeedsCode] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -26,10 +30,22 @@ export default function OperatorLogin() {
       const res = await fetch('/api/operator/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, ...(code ? { code } : {}) }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? 'Sign-in failed');
+
+      // The password was right and a second factor is required. Deliberately
+      // a 200 with a flag rather than an error: nothing has gone wrong, and
+      // treating it as a failure would show "Sign-in failed" to somebody who
+      // typed everything correctly.
+      if (json.mfaRequired && res.ok) {
+        setNeedsCode(true);
+        return;
+      }
+      if (!res.ok) {
+        if (json.mfaRequired) setNeedsCode(true);
+        throw new Error(json.error ?? 'Sign-in failed');
+      }
       router.replace('/operator');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sign-in failed');
@@ -68,6 +84,27 @@ export default function OperatorLogin() {
           className="border-border w-full rounded-md border px-3 py-2 text-sm"
         />
         {error && <p className="text-sm text-red-500">{error}</p>}
+        {needsCode && (
+          <div>
+            <label htmlFor="operator-code" className="mb-1 block text-sm font-medium">
+              Authenticator code
+            </label>
+            <input
+              id="operator-code"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              autoFocus
+              placeholder="6 digits"
+              className="border-border bg-background focus:ring-ring w-full rounded-md border px-3 py-2 text-sm tabular-nums focus:ring-2 focus:outline-none"
+            />
+            <p className="text-muted-foreground mt-1 text-xs">
+              Or one of your recovery codes.
+            </p>
+          </div>
+        )}
+
         <button
           type="submit"
           disabled={busy}
