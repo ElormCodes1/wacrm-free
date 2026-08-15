@@ -1,18 +1,36 @@
 import { headers } from 'next/headers';
 import Link from 'next/link';
-import { ArrowLeft } from 'lucide-react';
+import { AlertTriangle, ChevronRight } from 'lucide-react';
 
 import { getOperator, recordOperatorAction } from '@/lib/operator/session';
-import { getCompanyDetail, getCompanyHealth, type CompanyHealth } from '@/lib/operator/companies';
+import {
+  getCompanyDetail,
+  getCompanyHealth,
+  type CompanyHealth,
+} from '@/lib/operator/companies';
 import { StatusControl } from './status-control';
 import { NumberHealth } from './number-health';
+import {
+  PageHeader,
+  Metric,
+  Card,
+  StatusPill,
+  Table,
+  THead,
+  TBody,
+  TH,
+  TD,
+  EmptyState,
+  formatDate,
+} from '../../ui';
 
 /**
- * One customer's company, in full.
+ * One customer's company.
  *
- * Opening a specific company is recorded separately from listing them:
- * "who looked at this customer, and when" is the question actually asked
- * after a complaint, and a generic list-view entry cannot answer it.
+ * Opening a specific company is recorded separately from listing them,
+ * because "who looked at this customer, and when" is the question
+ * actually asked after a complaint, and a list-view entry cannot answer
+ * it.
  */
 export default async function OperatorCompany({
   params,
@@ -39,149 +57,147 @@ export default async function OperatorCompany({
 
   if (!company) {
     return (
-      <main className="mx-auto max-w-3xl p-6">
-        <BackLink />
-        <p className="text-muted-foreground border-border mt-4 rounded-md border border-dashed p-8 text-center text-sm">
-          No company at <code className="font-mono">/{slug}</code>.
-        </p>
-      </main>
+      <>
+        <PageHeader title="Unknown company" />
+        <div className="p-8">
+          <div className="border-border bg-card rounded-lg border">
+            <EmptyState
+              title="No company at that address"
+              body={`Nothing is registered at /${slug}.`}
+            />
+          </div>
+        </div>
+      </>
     );
   }
 
   return (
-    <main className="mx-auto max-w-3xl space-y-6 p-6">
-      <BackLink />
+    <>
+      <div className="border-border border-b px-8 pt-5 pb-6">
+        <nav className="text-muted-foreground mb-3 flex items-center gap-1 text-xs">
+          <Link href="/operator/companies" className="hover:text-foreground transition-colors">
+            Companies
+          </Link>
+          <ChevronRight className="h-3 w-3" />
+          <span className="text-foreground">{company.name}</span>
+        </nav>
 
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold">{company.name}</h1>
-          <p className="text-muted-foreground font-mono text-sm">/{company.slug}</p>
-        </div>
-        <span
-          className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-            company.status === 'active'
-              ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-              : 'bg-red-500/15 text-red-600 dark:text-red-400'
-          }`}
-        >
-          {company.status}
-        </span>
-      </header>
-
-      {company.status === 'suspended' && (
-        <div className="rounded-md border border-red-500/30 bg-red-500/10 p-3 text-sm">
-          <p className="font-medium text-red-600 dark:text-red-400">
-            Suspended {company.suspendedAt ? `on ${formatDate(company.suspendedAt)}` : ''}
-          </p>
-          <p className="text-muted-foreground mt-1">
-            {company.suspendedReason || 'No reason recorded.'}
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h1 className="text-xl font-semibold tracking-tight">{company.name}</h1>
+              <StatusPill status={company.status} />
+            </div>
+            <p className="text-muted-foreground mt-1 font-mono text-sm">/{company.slug}</p>
+          </div>
+          <p className="text-muted-foreground text-sm">
+            Signed up {formatDate(company.createdAt)} · last message{' '}
+            {formatDate(company.lastActivityAt, 'never')}
           </p>
         </div>
-      )}
+      </div>
 
-      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label="Members" value={company.members} />
-        <Stat label="Numbers" value={company.numbers} />
-        <Stat label="Contacts" value={company.contacts} />
-        <Stat label="Conversations" value={company.conversations} />
-      </section>
-
-      <section className="text-muted-foreground text-sm">
-        Signed up {formatDate(company.createdAt)} · last message{' '}
-        {company.lastActivityAt ? formatDate(company.lastActivityAt) : 'never'}
-      </section>
-
-      <Panel title="Members">
-        {company.membersList.length === 0 ? (
-          <Empty>No members.</Empty>
-        ) : (
-          <ul className="divide-border divide-y">
-            {company.membersList.map((m) => (
-              <li key={m.email ?? m.createdAt} className="flex items-center gap-3 px-3 py-2">
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm">{m.fullName || m.email}</span>
-                  {m.fullName && (
-                    <span className="text-muted-foreground block truncate text-xs">{m.email}</span>
-                  )}
-                </span>
-                <span className="text-muted-foreground text-xs">{m.role}</span>
-                {!m.isActive && (
-                  <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-xs text-red-600 dark:text-red-400">
-                    deactivated
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
+      <div className="space-y-6 p-8">
+        {company.status === 'suspended' && (
+          <div className="flex gap-3 rounded-lg border border-red-500/30 bg-red-500/10 p-4">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+            <div>
+              <p className="text-sm font-medium text-red-700 dark:text-red-400">
+                Suspended{company.suspendedAt ? ` on ${formatDate(company.suspendedAt)}` : ''}
+              </p>
+              <p className="text-muted-foreground mt-0.5 text-sm">
+                {company.suspendedReason || 'No reason recorded.'}
+              </p>
+            </div>
+          </div>
         )}
-      </Panel>
 
-      <Panel title="WhatsApp numbers">
-        {!health || health.numbers.length === 0 ? (
-          <Empty>No numbers connected.</Empty>
-        ) : (
-          <ul className="divide-border divide-y">
-            {health.numbers.map((n) => (
-              <NumberHealth key={n.id} slug={company.slug ?? ''} number={n} />
-            ))}
-          </ul>
-        )}
-      </Panel>
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <Metric label="Members" value={company.members} />
+          <Metric
+            label="Numbers"
+            value={`${company.numbers - company.numbersDown}/${company.numbers}`}
+            sub={company.numbersDown > 0 ? `${company.numbersDown} down` : 'connected'}
+            tone={company.numbersDown > 0 ? 'warn' : 'default'}
+          />
+          <Metric label="Contacts" value={company.contacts.toLocaleString()} />
+          <Metric
+            label="Messages today"
+            value={health?.messages24h ?? 0}
+            sub="last 24 hours"
+          />
+        </div>
 
-      {health && <Problems health={health} />}
+        {health && <Problems health={health} />}
 
-      <StatusControl
-        slug={company.slug ?? ''}
-        name={company.name}
-        status={company.status}
-        members={company.members}
-      />
-    </main>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card title="Members">
+            {company.membersList.length === 0 ? (
+              <EmptyState title="No members" />
+            ) : (
+              <Table>
+                <THead>
+                  <TH>Name</TH>
+                  <TH>Role</TH>
+                  <TH align="right">Joined</TH>
+                </THead>
+                <TBody>
+                  {company.membersList.map((m) => (
+                    <tr key={m.email ?? m.createdAt}>
+                      <TD>
+                        <span className="block truncate font-medium">
+                          {m.fullName || m.email}
+                        </span>
+                        {m.fullName && (
+                          <span className="text-muted-foreground block truncate text-xs">
+                            {m.email}
+                          </span>
+                        )}
+                      </TD>
+                      <TD>
+                        {m.isActive ? (
+                          <span className="text-muted-foreground text-sm">{m.role}</span>
+                        ) : (
+                          <span className="text-xs text-red-600 dark:text-red-400">
+                            deactivated
+                          </span>
+                        )}
+                      </TD>
+                      <TD align="right" className="text-muted-foreground text-sm">
+                        {formatDate(m.createdAt)}
+                      </TD>
+                    </tr>
+                  ))}
+                </TBody>
+              </Table>
+            )}
+          </Card>
+
+          <Card title="WhatsApp numbers">
+            {!health || health.numbers.length === 0 ? (
+              <EmptyState
+                title="No numbers connected"
+                body="This company has not paired a WhatsApp number yet."
+              />
+            ) : (
+              <ul className="divide-border divide-y">
+                {health.numbers.map((n) => (
+                  <NumberHealth key={n.id} slug={company.slug ?? ''} number={n} />
+                ))}
+              </ul>
+            )}
+          </Card>
+        </div>
+
+        <StatusControl
+          slug={company.slug ?? ''}
+          name={company.name}
+          status={company.status}
+          members={company.members}
+        />
+      </div>
+    </>
   );
-}
-
-function BackLink() {
-  return (
-    <Link
-      href="/operator"
-      className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-sm"
-    >
-      <ArrowLeft className="h-3.5 w-3.5" />
-      All companies
-    </Link>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="border-border rounded-md border p-3">
-      <p className="text-lg font-semibold">{value}</p>
-      <p className="text-muted-foreground text-xs">{label}</p>
-    </div>
-  );
-}
-
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section>
-      <h2 className="text-muted-foreground mb-2 text-xs font-semibold tracking-wider uppercase">
-        {title}
-      </h2>
-      <div className="border-border overflow-hidden rounded-md border">{children}</div>
-    </section>
-  );
-}
-
-function Empty({ children }: { children: React.ReactNode }) {
-  return <p className="text-muted-foreground px-3 py-4 text-sm">{children}</p>;
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
 }
 
 /**
@@ -194,7 +210,7 @@ function Problems({ health }: { health: CompanyHealth }) {
   const problems = [
     health.numbers.some((n) => n.connectionState !== 'open') && {
       title: 'A number is not connected',
-      body: 'Inbound messages stop while a socket is down. Use Check / restart above — it probes for real rather than trusting the stored state.',
+      body: 'Inbound messages stop while a socket is down. Use Check / restart below — it probes for real rather than trusting the stored state.',
     },
     health.automationsFailed7d > 0 && {
       title: `${health.automationsFailed7d} automation ${health.automationsFailed7d === 1 ? 'failure' : 'failures'} in 7 days`,
@@ -208,37 +224,29 @@ function Problems({ health }: { health: CompanyHealth }) {
       title: `${health.broadcastsWithFailures7d} ${health.broadcastsWithFailures7d === 1 ? 'broadcast' : 'broadcasts'} had failed recipients`,
       body: 'Some recipients did not receive the message.',
     },
+    health.messages24h === 0 &&
+      health.inboundStale && {
+        title: 'Nothing received recently',
+        body: 'No inbound message for over three days. Could be a quiet customer, or a number that looks connected and is not — worth a check below.',
+      },
   ].filter(Boolean) as { title: string; body: string }[];
 
-  const quiet = health.messages24h === 0 && health.inboundStale;
-
-  if (problems.length === 0 && !quiet) return null;
+  if (problems.length === 0) return null;
 
   return (
-    <section>
-      <h2 className="text-muted-foreground mb-2 text-xs font-semibold tracking-wider uppercase">
-        Needs attention
-      </h2>
-      <div className="space-y-2">
-        {problems.map((p) => (
-          <div
-            key={p.title}
-            className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm"
-          >
-            <p className="font-medium text-amber-600 dark:text-amber-400">{p.title}</p>
-            <p className="text-muted-foreground mt-1 text-xs">{p.body}</p>
+    <div className="space-y-2">
+      {problems.map((p) => (
+        <div
+          key={p.title}
+          className="flex gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4"
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+          <div>
+            <p className="text-sm font-medium text-amber-700 dark:text-amber-400">{p.title}</p>
+            <p className="text-muted-foreground mt-0.5 text-sm">{p.body}</p>
           </div>
-        ))}
-        {quiet && (
-          <div className="border-border rounded-md border p-3 text-sm">
-            <p className="font-medium">Nothing received recently</p>
-            <p className="text-muted-foreground mt-1 text-xs">
-              Last inbound message {formatDate(health.lastInboundAt!)}. Could be a quiet customer,
-              or a number that looks connected and is not — worth a check above.
-            </p>
-          </div>
-        )}
-      </div>
-    </section>
+        </div>
+      ))}
+    </div>
   );
 }

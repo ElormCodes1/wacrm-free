@@ -1,171 +1,220 @@
 import { headers } from 'next/headers';
 import Link from 'next/link';
-import { Search } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Check } from 'lucide-react';
 
 import { getOperator, recordOperatorAction } from '@/lib/operator/session';
-import { listCompanies, platformOverview } from '@/lib/operator/companies';
+import { listCompanies, platformOverview, listOperatorAudit } from '@/lib/operator/companies';
+import {
+  PageHeader,
+  Metric,
+  Card,
+  EmptyState,
+  Table,
+  THead,
+  TBody,
+  TH,
+  TD,
+  formatDateTime,
+} from './ui';
 
 /**
- * The company list.
+ * Overview — the page you open first.
  *
- * Viewing this is itself an operator action and is recorded before the
- * data is rendered — a read that crosses company lines is exactly what
- * the trail exists to capture, and recording it afterwards would miss the
- * ones that fail halfway.
+ * It answers two questions and no others: how is the platform doing, and
+ * is anything wrong right now. The company table lives on its own page
+ * because a dashboard that is also a table is neither.
+ *
+ * Viewing this is recorded before the data is rendered — a read that
+ * crosses company lines is exactly what the trail exists to capture, and
+ * recording it afterwards would miss the ones that fail halfway.
  */
-export default async function OperatorHome({
-  searchParams,
-}: {
-  searchParams: Promise<{ q?: string }>;
-}) {
+export default async function OperatorOverview() {
   const operator = await getOperator();
   if (!operator) return null; // layout already redirected
 
-  const { q } = await searchParams;
   const ip = (await headers()).get('x-forwarded-for');
+  await recordOperatorAction({ operator, action: 'operator.overview', ip });
 
-  await recordOperatorAction({
-    operator,
-    action: 'operator.list-companies',
-    detail: q ? { query: q } : undefined,
-    ip,
-  });
+  const [overview, companies, audit] = await Promise.all([
+    platformOverview(),
+    listCompanies(),
+    listOperatorAudit(6),
+  ]);
 
-  const [companies, overview] = await Promise.all([listCompanies(q), platformOverview()]);
-  const suspended = companies.filter((c) => c.status === 'suspended').length;
+  // Only things that can be acted on, each pointing at the company it
+  // concerns. A dashboard that reports problems without saying where they
+  // are makes you go looking, which is the part that wastes the time.
+  const issues = [
+    ...companies
+      .filter((c) => c.numbersDown > 0)
+      .map((c) => ({
+        key: `down-${c.id}`,
+        company: c.name,
+        slug: c.slug,
+        text:
+          c.numbersDown === 1
+            ? 'A WhatsApp number is not connected'
+            : `${c.numbersDown} WhatsApp numbers are not connected`,
+      })),
+    ...companies
+      .filter((c) => c.status === 'suspended')
+      .map((c) => ({
+        key: `susp-${c.id}`,
+        company: c.name,
+        slug: c.slug,
+        text: c.suspendedReason ? `Suspended — ${c.suspendedReason}` : 'Suspended',
+      })),
+  ];
 
-  // Things worth acting on today. Shown only when non-zero: a row of
-  // permanent zeroes trains you to stop reading the row.
-  const attention = [
-    overview.numbersDown > 0 && {
-      label: overview.numbersDown === 1 ? '1 number down' : `${overview.numbersDown} numbers down`,
-    },
+  const totalConversations = companies.reduce((sum, c) => sum + c.conversations, 0);
+
+  const platformIssues = [
     overview.automationsFailed7d > 0 && {
-      label: `${overview.automationsFailed7d} automation failures (7d)`,
+      key: 'auto',
+      text: `${overview.automationsFailed7d} automation ${overview.automationsFailed7d === 1 ? 'failure' : 'failures'} in the last 7 days`,
     },
-    overview.mediaFailed7d > 0 && { label: `${overview.mediaFailed7d} media failures (7d)` },
-    overview.companiesSuspended > 0 && { label: `${overview.companiesSuspended} suspended` },
-    overview.companiesDormant > 0 && {
-      label: `${overview.companiesDormant} dormant (30d)`,
-      muted: true,
+    overview.mediaFailed7d > 0 && {
+      key: 'media',
+      text: `${overview.mediaFailed7d} media ${overview.mediaFailed7d === 1 ? 'download' : 'downloads'} failed in the last 7 days`,
     },
-  ].filter(Boolean) as { label: string; muted?: boolean }[];
+  ].filter(Boolean) as { key: string; text: string }[];
 
   return (
-    <main className="mx-auto max-w-5xl p-6">
-      <section className="mb-6">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          <Metric label="Companies" value={overview.companiesTotal} sub={`${overview.companiesActive} active`} />
-          <Metric label="New (30d)" value={overview.signups30d} sub={`${overview.signups7d} this week`} />
+    <>
+      <PageHeader
+        title="Overview"
+        description="How the platform is doing, and anything that needs attention today."
+      />
+
+      <div className="space-y-6 p-8">
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <Metric
-            label="Numbers"
-            value={overview.numbersConnected}
-            sub={`of ${overview.numbersTotal} connected`}
-            bad={overview.numbersDown > 0}
+            label="Companies"
+            value={overview.companiesTotal}
+            sub={`${overview.companiesActive} active · ${overview.companiesSuspended} suspended`}
           />
-          <Metric label="Messages (24h)" value={overview.messages24h} sub={`${overview.messages7d} this week`} />
-          <Metric label="Contacts" value={overview.contactsTotal} sub="across all companies" />
+          <Metric
+            label="New this month"
+            value={overview.signups30d}
+            sub={`${overview.signups7d} in the last 7 days`}
+          />
+          <Metric
+            label="Numbers connected"
+            value={`${overview.numbersConnected}/${overview.numbersTotal}`}
+            sub={overview.numbersDown > 0 ? `${overview.numbersDown} down` : 'all healthy'}
+            tone={overview.numbersDown > 0 ? 'warn' : 'default'}
+          />
+          <Metric
+            label="Messages today"
+            value={overview.messages24h}
+            sub={`${overview.messages7d} in the last 7 days`}
+          />
         </div>
 
-        {attention.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {attention.map((a) => (
-              <span
-                key={a.label}
-                className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-                  a.muted
-                    ? 'bg-muted text-muted-foreground'
-                    : 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
-                }`}
-              >
-                {a.label}
-              </span>
-            ))}
+        {/* Attention and platform totals sit side by side because both are
+            short; activity runs full width below because it is a list that
+            grows. Stacking a short card above a tall one leaves a column of
+            nothing, which is what made this look unfinished. */}
+        <div className="grid items-start gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            <Card title="Needs attention">
+              {issues.length === 0 && platformIssues.length === 0 ? (
+                <div className="text-muted-foreground flex items-center gap-2.5 px-4 py-6 text-sm">
+                  <Check className="h-4 w-4 text-emerald-500" />
+                  Nothing to deal with. Every number is connected and no company is suspended.
+                </div>
+              ) : (
+                <ul className="divide-border divide-y">
+                  {issues.map((i) => (
+                    <li key={i.key}>
+                      <Link
+                        href={`/operator/c/${i.slug}`}
+                        className="hover:bg-muted/50 flex items-center gap-3 px-4 py-3 transition-colors"
+                      >
+                        <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium">{i.company}</span>
+                          <span className="text-muted-foreground block truncate text-xs">
+                            {i.text}
+                          </span>
+                        </span>
+                        <ArrowRight className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+                      </Link>
+                    </li>
+                  ))}
+                  {platformIssues.map((i) => (
+                    <li key={i.key} className="flex items-center gap-3 px-4 py-3">
+                      <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+                      <span className="text-sm">{i.text}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
           </div>
-        )}
-      </section>
 
-      <header className="mb-5 flex flex-wrap items-baseline justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold">Companies</h1>
-          <p className="text-muted-foreground text-sm">
-            {companies.length} {companies.length === 1 ? 'company' : 'companies'}
-            {suspended > 0 && ` · ${suspended} suspended`}
-          </p>
+          <Card title="Platform">
+            <dl className="divide-border divide-y text-sm">
+              <Row label="Contacts" value={overview.contactsTotal.toLocaleString()} />
+              <Row label="Conversations" value={totalConversations.toLocaleString()} />
+              <Row label="Numbers" value={overview.numbersTotal} />
+              <Row label="Dormant 30d" value={overview.companiesDormant} />
+            </dl>
+          </Card>
         </div>
 
-        {/* A plain GET form: no JavaScript, and the search survives a
-            reload or a shared link. */}
-        <form className="relative">
-          <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2" />
-          <input
-            type="search"
-            name="q"
-            defaultValue={q ?? ''}
-            placeholder="Search name or address"
-            className="border-border bg-background focus:ring-ring w-64 rounded-md border py-1.5 pr-3 pl-8 text-sm focus:ring-2 focus:outline-none"
-          />
-        </form>
-      </header>
-
-      {companies.length === 0 ? (
-        <p className="text-muted-foreground border-border rounded-md border border-dashed p-8 text-center text-sm">
-          {q ? `Nothing matches “${q}”.` : 'No companies yet.'}
-        </p>
-      ) : (
-        <ul className="divide-border divide-y rounded-md border">
-          {companies.map((c) => (
-            <li key={c.id}>
-              <Link
-                href={`/operator/c/${c.slug}`}
-                className="hover:bg-muted/50 flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 transition-colors"
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium">{c.name}</span>
-                  <span className="text-muted-foreground font-mono text-xs">/{c.slug ?? '—'}</span>
-                </span>
-
-                <span className="text-muted-foreground text-xs whitespace-nowrap">
-                  {c.members} {c.members === 1 ? 'member' : 'members'} · {c.numbers}{' '}
-                  {c.numbers === 1 ? 'number' : 'numbers'} · {c.contacts} contacts
-                </span>
-
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${
-                    c.status === 'active'
-                      ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                      : 'bg-red-500/15 text-red-600 dark:text-red-400'
-                  }`}
-                >
-                  {c.status}
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-    </main>
+        <Card
+          title="Recent activity"
+          action={
+            <Link
+              href="/operator/audit"
+              className="text-muted-foreground hover:text-foreground text-xs"
+            >
+              View all
+            </Link>
+          }
+        >
+          {audit.length === 0 ? (
+            <EmptyState title="Nothing recorded yet" />
+          ) : (
+            <Table>
+              <THead>
+                <TH>When</TH>
+                <TH>Operator</TH>
+                <TH>Action</TH>
+                <TH>Company</TH>
+              </THead>
+              <TBody>
+                {audit.map((e) => (
+                  <tr key={e.id}>
+                    <TD className="text-muted-foreground whitespace-nowrap">
+                      {formatDateTime(e.occurredAt)}
+                    </TD>
+                    <TD className="whitespace-nowrap">{e.operatorName ?? 'unknown'}</TD>
+                    <TD>
+                      <code className="bg-muted rounded px-1.5 py-0.5 font-mono text-xs">
+                        {e.action}
+                      </code>
+                    </TD>
+                    <TD className="text-muted-foreground max-w-48 truncate">
+                      {e.targetCompany ?? '—'}
+                    </TD>
+                  </tr>
+                ))}
+              </TBody>
+            </Table>
+          )}
+        </Card>
+      </div>
+    </>
   );
 }
 
-function Metric({
-  label,
-  value,
-  sub,
-  bad,
-}: {
-  label: string;
-  value: number;
-  sub: string;
-  bad?: boolean;
-}) {
+function Row({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="border-border rounded-md border p-3">
-      <p className={`text-2xl font-semibold ${bad ? 'text-amber-600 dark:text-amber-400' : ''}`}>
-        {value}
-      </p>
-      <p className="text-sm font-medium">{label}</p>
-      <p className="text-muted-foreground text-xs">{sub}</p>
+    <div className="flex items-center justify-between px-4 py-2.5">
+      <dt className="text-muted-foreground text-sm">{label}</dt>
+      <dd className="text-sm font-medium tabular-nums">{value}</dd>
     </div>
   );
 }

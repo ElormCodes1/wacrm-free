@@ -61,7 +61,7 @@ export function StatusControl({
 
   if (status === 'suspended') {
     return (
-      <section className="border-border rounded-md border p-4">
+      <section className="border-border bg-card rounded-lg border p-4">
         <h2 className="text-sm font-semibold">Reactivate</h2>
         <p className="text-muted-foreground mt-1 text-sm">
           Restores access immediately for all {members} {members === 1 ? 'member' : 'members'}.
@@ -80,7 +80,7 @@ export function StatusControl({
   }
 
   return (
-    <section className="rounded-md border border-red-500/30 p-4">
+    <section className="bg-card rounded-lg border border-red-500/30 p-4">
       <h2 className="text-sm font-semibold text-red-600 dark:text-red-400">Suspend</h2>
       <p className="text-muted-foreground mt-1 text-sm">
         Locks all {members} {members === 1 ? 'member' : 'members'} out of every page on their next

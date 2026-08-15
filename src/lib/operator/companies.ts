@@ -29,7 +29,11 @@ export interface CompanySummary {
   suspendedReason: string | null;
   members: number;
   numbers: number;
+  /** How many of this company's numbers are not currently connected. */
+  numbersDown: number;
   contacts: number;
+  conversations: number;
+  lastActivityAt: string | null;
 }
 
 export interface CompanyMember {
@@ -51,8 +55,36 @@ export interface CompanyNumber {
 export interface CompanyDetail extends CompanySummary {
   membersList: CompanyMember[];
   numbersList: CompanyNumber[];
-  conversations: number;
-  lastActivityAt: string | null;
+}
+
+/**
+ * Every company, newest first, optionally filtered.
+ *
+ * One SQL call. The previous version fetched the accounts and then ran
+ * three counts PER COMPANY, so the console got slower in exact proportion
+ * to the business doing well — and it still could not show last activity,
+ * which needs an aggregate PostgREST cannot express inline.
+ */
+export async function listCompanies(query?: string): Promise<CompanySummary[]> {
+  const db = privilegedClient('operator');
+  const { data } = await db.rpc('operator_company_list', { search: query ?? null });
+  const rows = (data ?? []) as Record<string, unknown>[];
+
+  return rows.map((row) => ({
+    id: row.id as string,
+    slug: (row.slug as string) ?? null,
+    name: row.name as string,
+    status: row.status as CompanyStatus,
+    createdAt: row.created_at as string,
+    suspendedAt: (row.suspended_at as string) ?? null,
+    suspendedReason: (row.suspended_reason as string) ?? null,
+    members: Number(row.members ?? 0),
+    numbers: Number(row.numbers ?? 0),
+    numbersDown: Number(row.numbers_down ?? 0),
+    contacts: Number(row.contacts ?? 0),
+    conversations: Number(row.conversations ?? 0),
+    lastActivityAt: (row.last_activity_at as string) ?? null,
+  }));
 }
 
 /** Count rows for one account without fetching them. */
@@ -67,57 +99,6 @@ async function countFor(
     .select('id', { count: 'exact', head: true })
     .eq('account_id', accountId);
   return count ?? 0;
-}
-
-/**
- * Every company, newest first, optionally filtered.
- *
- * The filter matches name and address rather than being a full-text
- * search: an operator arrives here knowing which customer they are
- * looking for, usually from an email or a support message.
- */
-export async function listCompanies(query?: string): Promise<CompanySummary[]> {
-  const db = privilegedClient('operator');
-
-  let request = db
-    .from('accounts')
-    .select('id, slug, name, status, created_at, suspended_at, suspended_reason')
-    .order('created_at', { ascending: false });
-
-  const term = query?.trim();
-  if (term) {
-    // Escape the PostgREST or() grammar: a comma or parenthesis in the
-    // search box would otherwise be read as more filters rather than as
-    // text, which at best breaks the query and at worst widens it.
-    const safe = term.replace(/[,()\\]/g, ' ').trim();
-    if (safe) request = request.or(`name.ilike.%${safe}%,slug.ilike.%${safe}%`);
-  }
-
-  const { data } = await request;
-  const rows = (data ?? []) as Record<string, unknown>[];
-
-  return Promise.all(
-    rows.map(async (row) => {
-      const id = row.id as string;
-      const [members, numbers, contacts] = await Promise.all([
-        countFor(db, 'profiles', id),
-        countFor(db, 'whatsapp_config', id),
-        countFor(db, 'contacts', id),
-      ]);
-      return {
-        id,
-        slug: (row.slug as string) ?? null,
-        name: row.name as string,
-        status: row.status as CompanyStatus,
-        createdAt: row.created_at as string,
-        suspendedAt: (row.suspended_at as string) ?? null,
-        suspendedReason: (row.suspended_reason as string) ?? null,
-        members,
-        numbers,
-        contacts,
-      };
-    })
-  );
 }
 
 /** One company in full, or null if the address names nothing. */
@@ -169,6 +150,7 @@ export async function getCompanyDetail(slug: string): Promise<CompanyDetail | nu
     suspendedReason: (account.suspended_reason as string) ?? null,
     members: members.length,
     numbers: numbers.length,
+    numbersDown: numbers.filter((n) => n.connection_state !== 'open').length,
     contacts,
     conversations,
     lastActivityAt: (lastMessage.data?.last_message_at as string) ?? null,
