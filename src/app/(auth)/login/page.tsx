@@ -1,162 +1,53 @@
-"use client";
+import { cookies } from 'next/headers';
 
-import { Suspense, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { UsersRound } from "lucide-react";
-import { BrandLogo } from "@/components/layout/brand-logo";
+import { companyBrandingBySlug } from '@/lib/tenancy/branding';
+import { sanitiseCompanyHint, LAST_COMPANY_COOKIE } from '@/lib/tenancy/last-company';
+import { LoginForm, type Branding } from './login-form';
 
-// `useSearchParams` opts the component out of static prerendering
-// unless it sits under a Suspense boundary. We split the form into
-// a child component so the outer page can prerender the chrome
-// (background, card frame) while the form hydrates with the query
-// string on the client.
-export default function LoginPage() {
-  return (
-    <Suspense fallback={null}>
-      <LoginPageInner />
-    </Suspense>
-  );
-}
+/**
+ * The sign-in page, branded for whichever company the visitor belongs to.
+ *
+ * The branding is resolved HERE, on the server, rather than fetched after
+ * hydration. A client fetch would paint the generic product logo first and
+ * swap it a moment later, which defeats the purpose: the point is that
+ * someone can tell whose system they are looking at before they type a
+ * password, and a flash of the wrong identity is exactly the doubt this is
+ * meant to remove.
+ *
+ * Which company to paint comes from the address, then from the cookie left
+ * by the last successful sign-in on this device. Both are sanitised and
+ * both are hints only — the worst a tampered value achieves is showing
+ * someone the wrong company's logo above a form that still demands their
+ * password. Nothing is granted by it, so nothing about it is worth
+ * stealing.
+ */
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ company?: string }>;
+}) {
+  const { company } = await searchParams;
+  const store = await cookies();
 
-function LoginPageInner() {
-  const searchParams = useSearchParams();
-  // Forwarded from `/join/<token>` when the visitor already has an
-  // account. After a successful sign-in we send them to the join
-  // page to accept rather than to /dashboard.
-  const inviteToken = searchParams.get("invite");
+  const hint =
+    sanitiseCompanyHint(company) ??
+    sanitiseCompanyHint(store.get(LAST_COMPANY_COOKIE)?.value);
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const router = useRouter();
-  const supabase = createClient();
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) {
-      setError(error.message);
-      setLoading(false);
-      return;
+  let branding: Branding | null = null;
+  if (hint) {
+    const found = await companyBrandingBySlug(hint);
+    // A suspended company still gets its own sign-in page: the person
+    // needs to reach someone who can explain, not a blank wall.
+    if (found) {
+      branding = {
+        slug: found.slug,
+        name: found.name,
+        logoUrl: found.logoUrl,
+        brandColor: found.brandColor,
+        status: found.status,
+      };
     }
+  }
 
-    if (inviteToken) {
-      router.push(`/join/${encodeURIComponent(inviteToken)}`);
-    } else {
-      router.push("/dashboard");
-    }
-  };
-
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-md border-border bg-card">
-        <CardHeader className="items-center text-center">
-          {inviteToken ? (
-            <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-              <UsersRound className="h-6 w-6 text-primary" />
-            </div>
-          ) : (
-            <BrandLogo className="mb-2 h-12 w-12" />
-          )}
-          <CardTitle className="text-xl text-foreground">
-            {inviteToken ? "Sign in to accept" : "Welcome back"}
-          </CardTitle>
-          <CardDescription className="text-muted-foreground">
-            {inviteToken
-              ? "Sign in and we'll take you to the invitation."
-              : "Sign in to your account"}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleLogin} className="flex flex-col gap-4">
-            {error && (
-              <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-                {error}
-              </div>
-            )}
-
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="email" className="text-muted-foreground">
-                Email
-              </Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="border-border bg-muted text-foreground placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-primary/20"
-              />
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password" className="text-muted-foreground">
-                  Password
-                </Label>
-                <Link
-                  href="/forgot-password"
-                  className="text-sm text-primary hover:text-primary/80"
-                >
-                  Forgot password?
-                </Link>
-              </div>
-              <Input
-                id="password"
-                type="password"
-                placeholder="Enter your password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="border-border bg-muted text-foreground placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-primary/20"
-              />
-            </div>
-
-            <Button
-              type="submit"
-              disabled={loading}
-              className="mt-2 h-10 w-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-            >
-              {loading ? "Signing in..." : "Sign in"}
-            </Button>
-          </form>
-
-          <p className="mt-6 text-center text-sm text-muted-foreground">
-            Don&apos;t have an account?{" "}
-            <Link
-              href={
-                inviteToken
-                  ? `/signup?invite=${encodeURIComponent(inviteToken)}`
-                  : "/signup"
-              }
-              className="text-primary hover:text-primary/80"
-            >
-              Create account
-            </Link>
-          </p>
-        </CardContent>
-      </Card>
-    </div>
-  );
+  return <LoginForm branding={branding} />;
 }
