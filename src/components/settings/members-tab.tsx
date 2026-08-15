@@ -74,6 +74,7 @@ import {
 import { InviteMemberDialog } from './invite-member-dialog';
 import { SettingsPanelHead } from './settings-panel-head';
 import { ROLE_META } from './role-meta';
+import { LimitPrompt } from '@/components/billing/upgrade-prompt';
 
 interface Member {
   user_id: string;
@@ -280,6 +281,7 @@ export function MembersTab() {
 
   return (
     <section className="animate-in fade-in-50 space-y-6 duration-200">
+      <LimitPrompt kind="members" />
       <SettingsPanelHead
         title="Team members"
         description="People with access to this account. Roles control what each teammate can do."

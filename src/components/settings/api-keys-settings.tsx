@@ -41,6 +41,7 @@ import {
   type ApiScope,
 } from '@/lib/api-keys/scopes';
 import { SettingsPanelHead } from './settings-panel-head';
+import { LimitPrompt } from '@/components/billing/upgrade-prompt';
 
 interface ApiKey {
   id: string;
@@ -134,6 +135,11 @@ export function ApiKeysSettings() {
 
   return (
     <section className="animate-in fade-in-50 space-y-6 duration-200">
+      {/* This one is a real block rather than a nudge: keys on a plan
+          without API access are refused at the auth path, so saying so
+          here is the difference between a clear message and a support
+          ticket about a key that "does not work". */}
+      <LimitPrompt kind="api" />
       <SettingsPanelHead
         title="API keys"
         description={

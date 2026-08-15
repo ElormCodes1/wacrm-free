@@ -26,6 +26,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { SettingsPanelHead } from './settings-panel-head';
 import { WhatsAppProfileCard } from './whatsapp-profile-card';
 import { WhatsAppSettingsCard } from './whatsapp-settings-card';
+import { LimitPrompt } from '@/components/billing/upgrade-prompt';
 
 interface QrPayload {
   base64: string | null;
@@ -219,6 +220,10 @@ export function WhatsAppConfig() {
         title="WhatsApp numbers"
         description="Link one or more WhatsApp numbers by scanning a QR code. Powered by your self-hosted Evolution API — no Meta Business account required."
       />
+
+      {/* Shown when they are AT the ceiling, not past it: the offer has to
+          arrive before they try to add the number, not after. */}
+      <LimitPrompt kind="numbers" className="mb-4" />
 
       <div className="mx-auto max-w-2xl space-y-6">
         {errorMsg && (

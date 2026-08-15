@@ -19,6 +19,7 @@ import { GatedButton } from '@/components/ui/gated-button';
 import { getBroadcastStatus } from '@/lib/broadcast-status';
 import { companyPath } from "@/lib/tenancy/routes";
 import { useCompanySlug } from "@/components/tenancy/company-link";
+import { LimitPrompt } from '@/components/billing/upgrade-prompt';
 
 /**
  * Poll cadence while any broadcast is sending. Kept modest so we don't
@@ -143,6 +144,11 @@ export function BroadcastsClient({ initial }: { initial: Broadcast[] }) {
 
   return (
     <div className="space-y-6">
+      {/* Only once they are OVER: nobody can plan around a limit on
+          messages they have already sent, so warning earlier would just
+          be noise on a page they use every day. */}
+      <LimitPrompt kind="broadcasts" />
+
       {/* Top indeterminate progress bar: only visible while a broadcast
           is mid-send. Pure CSS animation so no extra deps. */}
       {anySending && (

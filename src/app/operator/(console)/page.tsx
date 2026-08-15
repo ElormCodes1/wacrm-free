@@ -9,7 +9,7 @@ import {
   platformOverview,
   listOperatorAudit,
 } from '@/lib/operator/companies';
-import { billingOverview } from '@/lib/operator/billing';
+import { billingOverview, listUpgradeRequests } from '@/lib/operator/billing';
 import { formatMinor } from '@/lib/billing/money';
 import { planBreaches } from '@/lib/billing/limits';
 import {
@@ -50,11 +50,21 @@ export default async function OperatorOverview() {
     billingOverview(),
   ]);
   const companies = await withUsage(rawCompanies);
+  const upgrades = await listUpgradeRequests();
 
   // Only things that can be acted on, each pointing at the company it
   // concerns. A dashboard that reports problems without saying where they
   // are makes you go looking, which is the part that wastes the time.
   const issues = [
+    // First: somebody is asking to give us more money.
+    ...upgrades.map((r) => ({
+      key: `upgrade-${r.id}`,
+      company: r.companyName,
+      slug: r.companySlug,
+      text: `Asked to upgrade${r.reason ? ` — hit their ${r.reason} limit` : ''}${
+        r.requestedByName ? ` (${r.requestedByName})` : ''
+      }`,
+    })),
     ...companies
       .filter((c) => c.numbersDown > 0)
       .map((c) => ({

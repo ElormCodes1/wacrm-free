@@ -370,3 +370,64 @@ export async function recordPayment(input: {
   if (error) return { ok: false, error: error.message };
   return { ok: true, id: data!.id as string };
 }
+
+
+// ---------------------------------------------------------------- upgrades
+
+export interface UpgradeRequest {
+  id: string;
+  accountId: string;
+  companyName: string;
+  companySlug: string | null;
+  reason: string | null;
+  requestedByName: string | null;
+  createdAt: string;
+}
+
+/**
+ * Customers who have asked to move up.
+ *
+ * The other half of the upgrade prompt. Without this the button records a
+ * row nobody reads, which is worse than no button — the customer believes
+ * they have started a conversation that never began.
+ */
+export async function listUpgradeRequests(): Promise<UpgradeRequest[]> {
+  const db = privilegedClient('operator');
+  const { data } = await db
+    .from('upgrade_requests')
+    .select('id, account_id, reason, requested_by_name, created_at')
+    .eq('status', 'open')
+    .order('created_at', { ascending: true });
+
+  const rows = (data ?? []) as Record<string, unknown>[];
+  if (rows.length === 0) return [];
+
+  const ids = [...new Set(rows.map((r) => r.account_id as string))];
+  const { data: accounts } = await db.from('accounts').select('id, name, slug').in('id', ids);
+  const byId = new Map<string, { name: string; slug: string | null }>();
+  for (const a of (accounts ?? []) as Record<string, unknown>[]) {
+    byId.set(a.id as string, { name: a.name as string, slug: (a.slug as string) ?? null });
+  }
+
+  return rows.map((r) => ({
+    id: r.id as string,
+    accountId: r.account_id as string,
+    companyName: byId.get(r.account_id as string)?.name ?? '(unknown)',
+    companySlug: byId.get(r.account_id as string)?.slug ?? null,
+    reason: (r.reason as string) ?? null,
+    requestedByName: (r.requested_by_name as string) ?? null,
+    createdAt: r.created_at as string,
+  }));
+}
+
+/** Close a request once it has been dealt with, either way. */
+export async function resolveUpgradeRequest(
+  id: string,
+  status: 'done' | 'declined'
+): Promise<void> {
+  const db = privilegedClient('operator');
+  await db
+    .from('upgrade_requests')
+    .update({ status, resolved_at: new Date().toISOString() })
+    .eq('id', id);
+}
