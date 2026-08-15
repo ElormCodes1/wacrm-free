@@ -27,6 +27,7 @@ export function PlansPanel({ plans }: { plans: Plan[] }) {
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState('USD');
   const [interval, setInterval] = useState<'month' | 'year'>('month');
+  const [description, setDescription] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -116,14 +117,31 @@ export function PlansPanel({ plans }: { plans: Plan[] }) {
               </select>
             </label>
 
+            <label className="w-full text-xs">
+              <span className="mb-1 block font-medium">
+                Description
+                <span className="text-muted-foreground font-normal">
+                  {' '}
+                  — shown on the pricing section and signup page
+                </span>
+              </span>
+              <input
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="What this plan includes, in one line."
+                className="border-border bg-background focus:ring-ring w-full rounded-md border px-2.5 py-1.5 text-sm focus:ring-2 focus:outline-none"
+              />
+            </label>
+
             <button
               type="button"
               disabled={busy}
               onClick={async () => {
-                const ok = await post({ name, amount, currency, interval });
+                const ok = await post({ name, amount, currency, interval, description });
                 if (ok) {
                   setName('');
                   setAmount('');
+                  setDescription('');
                   setOpen(false);
                 }
               }}
@@ -151,8 +169,8 @@ export function PlansPanel({ plans }: { plans: Plan[] }) {
                     <span className="text-muted-foreground ml-2 text-xs font-normal">retired</span>
                   )}
                 </span>
-                <span className="text-muted-foreground text-xs">
-                  {p.subscribers} {p.subscribers === 1 ? 'company' : 'companies'}
+                <span className="text-muted-foreground block truncate text-xs">
+                  {p.description || `${p.subscribers} ${p.subscribers === 1 ? 'company' : 'companies'}`}
                 </span>
               </span>
 
@@ -162,6 +180,26 @@ export function PlansPanel({ plans }: { plans: Plan[] }) {
                   /{p.interval === 'year' ? 'yr' : 'mo'}
                 </span>
               </span>
+
+              {p.isActive && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  title={
+                    p.highlight
+                      ? 'Shown as Recommended on the pricing section'
+                      : 'Mark as Recommended on the pricing section'
+                  }
+                  onClick={() => post({ action: 'update', id: p.id, highlight: !p.highlight })}
+                  className={`rounded-md border px-2.5 py-1 text-xs transition-colors disabled:opacity-50 ${
+                    p.highlight
+                      ? 'border-primary bg-primary-soft text-primary'
+                      : 'border-border hover:bg-muted'
+                  }`}
+                >
+                  {p.highlight ? 'Recommended' : 'Recommend'}
+                </button>
+              )}
 
               <button
                 type="button"

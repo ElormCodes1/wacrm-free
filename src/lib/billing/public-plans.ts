@@ -16,9 +16,13 @@ import { createClient } from '@/lib/supabase/server';
 export interface PublicPlan {
   id: string;
   name: string;
+  /** Written by you in the console. Null renders as just a name and a price. */
+  description: string | null;
   amountMinor: number;
   currency: string;
   interval: 'month' | 'year';
+  /** The one plan a pricing page should draw attention to, if any. */
+  highlight: boolean;
 }
 
 export async function listPublicPlans(): Promise<PublicPlan[]> {
@@ -26,7 +30,7 @@ export async function listPublicPlans(): Promise<PublicPlan[]> {
     const supabase = await createClient();
     const { data, error } = await supabase
       .from('public_plans')
-      .select('id, name, amount_minor, currency, interval');
+      .select('id, name, description, amount_minor, currency, interval, highlight');
 
     // A signup page must not fail because the price list did. Someone
     // trying to give us money should get a form, not an error page.
@@ -35,9 +39,11 @@ export async function listPublicPlans(): Promise<PublicPlan[]> {
     return ((data ?? []) as Record<string, unknown>[]).map((p) => ({
       id: p.id as string,
       name: p.name as string,
+      description: (p.description as string) ?? null,
       amountMinor: Number(p.amount_minor ?? 0),
       currency: p.currency as string,
       interval: (p.interval as 'month' | 'year') ?? 'month',
+      highlight: p.highlight === true,
     }));
   } catch {
     return [];

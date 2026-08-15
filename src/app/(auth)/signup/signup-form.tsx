@@ -28,6 +28,11 @@ export function SignupForm({ plans }: { plans: PublicPlan[] }) {
   // points back at /join/<token> so the user lands on the redeem
   // step after verifying instead of being dropped on /dashboard.
   const inviteToken = searchParams.get("invite");
+  // A pricing card sends the plan it represents. Validated against the
+  // plans we actually rendered, so a hand-edited query string selects
+  // nothing rather than something arbitrary — and the trigger checks it
+  // again server-side regardless.
+  const requestedPlan = searchParams.get("plan");
 
   const [fullName, setFullName] = useState("");
   const [companyName, setCompanyName] = useState("");
@@ -35,7 +40,9 @@ export function SignupForm({ plans }: { plans: PublicPlan[] }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [planId, setPlanId] = useState<string>(plans[0]?.id ?? "");
+  const [planId, setPlanId] = useState<string>(
+    plans.find((p) => p.id === requestedPlan)?.id ?? plans[0]?.id ?? ""
+  );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);

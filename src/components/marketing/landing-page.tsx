@@ -34,6 +34,8 @@ import {
 } from 'lucide-react';
 
 import { BrandLogo } from '@/components/layout/brand-logo';
+import { formatMinor } from '@/lib/billing/money';
+import type { PublicPlan } from '@/lib/billing/public-plans';
 import { ModeToggle } from '@/components/layout/mode-toggle';
 
 /**
@@ -110,7 +112,12 @@ const FEATURES = [
   },
 ];
 
-export function LandingPage() {
+export function LandingPage({ plans = [] }: { plans?: PublicPlan[] }) {
+  // No plans configured means no pricing anywhere on the page — not an
+  // empty section with a heading over nothing, and not a "Pricing" link
+  // that scrolls to a blank. This is the state the app ships in.
+  const hasPricing = plans.length > 0;
+
   return (
     <div className="bg-background text-foreground min-h-screen">
       {/* ---------- header ---------- */}
@@ -131,6 +138,11 @@ export function LandingPage() {
             <a href="#how" className="hover:text-foreground transition-colors">
               How it connects
             </a>
+            {hasPricing && (
+              <a href="#pricing" className="hover:text-foreground transition-colors">
+                Pricing
+              </a>
+            )}
             <a href="#self-host" className="hover:text-foreground transition-colors">
               Self-hosting
             </a>
@@ -329,6 +341,9 @@ export function LandingPage() {
             </div>
           </div>
         </section>
+
+        {/* ---------- pricing ---------- */}
+        {hasPricing && <Pricing plans={plans} />}
 
         {/* ---------- self-hosting ---------- */}
         <section id="self-host" className="border-border/60 border-t">
@@ -777,5 +792,100 @@ function Bubble({
         </span>
       )}
     </div>
+  );
+}
+
+/**
+ * Pricing, straight from the plans in the console.
+ *
+ * The cards say a name, a price and whatever description was written for
+ * that plan — and nothing else. The obvious thing to add is a tick-list
+ * of features per tier, and the reason there isn't one is that the
+ * product has no per-plan feature data: any list here would be invented
+ * by whoever built the page, printed in front of the people it makes
+ * promises to. When the tiers really do differ, that belongs in the
+ * plan's description where the business writes it.
+ *
+ * Each card carries its plan through to signup, so choosing here means
+ * arriving there with it already selected.
+ */
+function Pricing({ plans }: { plans: PublicPlan[] }) {
+  return (
+    <section id="pricing" className="border-border/60 border-t">
+      <div className="mx-auto max-w-6xl px-5 py-16 md:py-24">
+        <div className="mx-auto max-w-2xl text-center">
+          <h2 className="text-3xl font-bold tracking-tight text-balance md:text-4xl">
+            Pricing
+          </h2>
+          <p className="text-muted-foreground mt-4 text-lg text-pretty">
+            One price per company, whatever the size of your team. Connect as many of your own
+            numbers as you run.
+          </p>
+        </div>
+
+        <div
+          className={`mx-auto mt-12 grid gap-6 ${
+            plans.length === 1
+              ? 'max-w-sm'
+              : plans.length === 2
+                ? 'max-w-3xl sm:grid-cols-2'
+                : 'sm:grid-cols-2 lg:grid-cols-3'
+          }`}
+        >
+          {plans.map((plan) => (
+            <div
+              key={plan.id}
+              className={`relative flex flex-col rounded-xl border p-6 ${
+                plan.highlight
+                  ? 'border-primary bg-card ring-primary/20 ring-1'
+                  : 'border-border bg-card'
+              }`}
+            >
+              {plan.highlight && (
+                <span className="bg-primary text-primary-foreground absolute -top-3 left-1/2 -translate-x-1/2 rounded-full px-3 py-0.5 text-xs font-semibold">
+                  Recommended
+                </span>
+              )}
+
+              <h3 className="font-semibold">{plan.name}</h3>
+
+              <p className="mt-3 flex items-baseline gap-1">
+                <span className="text-3xl font-bold tracking-tight tabular-nums">
+                  {formatMinor(plan.amountMinor, plan.currency)}
+                </span>
+                <span className="text-muted-foreground text-sm">
+                  /{plan.interval === 'year' ? 'year' : 'month'}
+                </span>
+              </p>
+
+              {plan.description && (
+                <p className="text-muted-foreground mt-4 text-sm leading-relaxed text-pretty">
+                  {plan.description}
+                </p>
+              )}
+
+              <Link
+                href={`/signup?plan=${plan.id}`}
+                className={`mt-6 inline-flex h-10 items-center justify-center rounded-lg px-5 text-sm font-semibold transition-colors ${
+                  plan.highlight
+                    ? 'bg-primary text-primary-foreground hover:bg-primary-hover'
+                    : 'border-border bg-background hover:bg-card-2 border'
+                }`}
+              >
+                Get started
+              </Link>
+            </div>
+          ))}
+        </div>
+
+        <p className="text-muted-foreground mt-8 text-center text-sm">
+          No card required to start — you will be invoiced. Or{' '}
+          <a href="#self-host" className="text-foreground underline underline-offset-4">
+            run it yourself
+          </a>{' '}
+          for nothing.
+        </p>
+      </div>
+    </section>
   );
 }

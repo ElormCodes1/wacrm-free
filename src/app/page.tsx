@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 
 import { getCompany } from '@/lib/tenancy/company';
+import { listPublicPlans } from '@/lib/billing/public-plans';
 import { LandingPage } from '@/components/marketing/landing-page';
 
 const DESCRIPTION =
@@ -55,5 +56,5 @@ export default async function RootPage() {
   const result = await getCompany();
   if (result.ok) redirect(`/${result.company.slug}`);
 
-  return <LandingPage />;
+  return <LandingPage plans={await listPublicPlans()} />;
 }

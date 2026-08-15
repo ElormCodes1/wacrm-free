@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
 
 import { getOperator, recordOperatorAction } from '@/lib/operator/session';
-import { createPlan, setPlanActive, listPlans } from '@/lib/operator/billing';
+import {
+  createPlan,
+  setPlanActive,
+  listPlans,
+  updatePlanPresentation,
+} from '@/lib/operator/billing';
 import { parseAmountToMinor } from '@/lib/billing/money';
 
 /**
@@ -26,6 +31,8 @@ export async function POST(request: Request) {
     amount?: string;
     currency?: string;
     interval?: string;
+    description?: string | null;
+    highlight?: boolean;
   };
 
   if (body.action === 'retire' || body.action === 'restore') {
@@ -36,6 +43,24 @@ export async function POST(request: Request) {
       operator,
       action: isActive ? 'plan.restore' : 'plan.retire',
       detail: { planId: body.id },
+      ip: request.headers.get('x-forwarded-for'),
+    });
+    return NextResponse.json({ ok: true });
+  }
+
+  // Editing the words is allowed; editing the price is not — that would
+  // rewrite what an existing customer agreed to pay.
+  if (body.action === 'update') {
+    if (!body.id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
+    const result = await updatePlanPresentation(body.id, {
+      description: body.description === undefined ? undefined : (body.description || null),
+      highlight: body.highlight,
+    });
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
+    await recordOperatorAction({
+      operator,
+      action: 'plan.update',
+      detail: { planId: body.id, highlight: body.highlight ?? null },
       ip: request.headers.get('x-forwarded-for'),
     });
     return NextResponse.json({ ok: true });
@@ -58,6 +83,7 @@ export async function POST(request: Request) {
     amountMinor: parsed.minor,
     currency,
     interval,
+    description: body.description?.trim() || null,
   });
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
 

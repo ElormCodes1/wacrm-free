@@ -28,6 +28,8 @@ export type BillingState =
 export interface Plan {
   id: string;
   name: string;
+  description: string | null;
+  highlight: boolean;
   amountMinor: number;
   currency: string;
   interval: 'month' | 'year';
@@ -87,7 +89,7 @@ export async function listPlans(includeRetired = false): Promise<Plan[]> {
   const db = privilegedClient('operator');
   let q = db
     .from('billing_plans')
-    .select('id, name, amount_minor, currency, interval, is_active')
+    .select('id, name, description, amount_minor, currency, interval, is_active, highlight')
     .order('amount_minor', { ascending: true });
   if (!includeRetired) q = q.eq('is_active', true);
 
@@ -105,6 +107,8 @@ export async function listPlans(includeRetired = false): Promise<Plan[]> {
   return rows.map((r) => ({
     id: r.id as string,
     name: r.name as string,
+    description: (r.description as string) ?? null,
+    highlight: r.highlight === true,
     amountMinor: Number(r.amount_minor ?? 0),
     currency: r.currency as string,
     interval: (r.interval as 'month' | 'year') ?? 'month',
@@ -181,6 +185,7 @@ export async function createPlan(input: {
   amountMinor: number;
   currency: string;
   interval: 'month' | 'year';
+  description?: string | null;
 }): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const db = privilegedClient('operator');
   const { data, error } = await db
@@ -190,6 +195,7 @@ export async function createPlan(input: {
       amount_minor: input.amountMinor,
       currency: input.currency,
       interval: input.interval,
+      description: input.description ?? null,
     })
     .select('id')
     .maybeSingle();
@@ -212,6 +218,35 @@ export async function createPlan(input: {
 export async function setPlanActive(id: string, isActive: boolean): Promise<void> {
   const db = privilegedClient('operator');
   await db.from('billing_plans').update({ is_active: isActive }).eq('id', id);
+}
+
+/**
+ * Edit the words, never the price.
+ *
+ * Description and highlight describe the offer rather than constituting
+ * it, so they are safe to change under an existing customer. Amount and
+ * currency are deliberately not accepted here.
+ */
+export async function updatePlanPresentation(
+  id: string,
+  input: { description?: string | null; highlight?: boolean }
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const db = privilegedClient('operator');
+
+  // Only one plan may be highlighted; clear the others first rather than
+  // letting the unique index reject the write.
+  if (input.highlight === true) {
+    await db.from('billing_plans').update({ highlight: false }).eq('highlight', true);
+  }
+
+  const patch: Record<string, unknown> = {};
+  if (input.description !== undefined) patch.description = input.description;
+  if (input.highlight !== undefined) patch.highlight = input.highlight;
+  if (Object.keys(patch).length === 0) return { ok: true };
+
+  const { error } = await db.from('billing_plans').update(patch).eq('id', id);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
 }
 
 export interface BillingUpdate {
