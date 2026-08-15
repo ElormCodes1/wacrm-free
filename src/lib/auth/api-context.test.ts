@@ -14,9 +14,11 @@ vi.mock("@/lib/flows/admin-client", () => ({
 // Mock the store so we control which row a hash resolves to.
 const findActiveKeyByHash = vi.fn<(hash: string) => Promise<ApiKeyRow | null>>();
 const touchLastUsed = vi.fn();
+const isApiAllowedForAccount = vi.fn<(accountId: string) => Promise<boolean>>();
 vi.mock("@/lib/api-keys/store", () => ({
   findActiveKeyByHash: (hash: string) => findActiveKeyByHash(hash),
   touchLastUsed: (id: string) => touchLastUsed(id),
+  isApiAllowedForAccount: (accountId: string) => isApiAllowedForAccount(accountId),
 }));
 
 // Import AFTER the mocks are registered.
@@ -47,6 +49,10 @@ beforeEach(() => {
   __resetRateLimitForTests();
   findActiveKeyByHash.mockReset();
   touchLastUsed.mockReset();
+  // Allowed by default: the plan gate is off the critical path of every
+  // other case here, and a company with no plan keeps API access anyway.
+  isApiAllowedForAccount.mockReset();
+  isApiAllowedForAccount.mockResolvedValue(true);
 });
 
 afterEach(() => {
@@ -128,5 +134,80 @@ describe("requireApiKey", () => {
       "rate_limited",
       429,
     );
+  });
+});
+
+/**
+ * The plan gate.
+ *
+ * Enforced rather than advisory, so it needs the same care as the scope
+ * check: it must refuse the request, and it must not tell an attacker
+ * anything a valid key would not already reveal.
+ */
+describe("requireApiKey — plan gate", () => {
+  const validKey = "wacrm_live_" + "k".repeat(43);
+
+  function keyRow() {
+    return {
+      id: "key-1",
+      account_id: "acct-1",
+      created_by: null,
+      name: "test",
+      scopes: ["contacts:read"],
+      expires_at: null,
+      revoked_at: null,
+    };
+  }
+
+  it("403s when the account's plan does not include the API", async () => {
+    findActiveKeyByHash.mockResolvedValue(keyRow());
+    isApiAllowedForAccount.mockResolvedValue(false);
+
+    await expect(
+      requireApiKey(new Request("https://x/api/v1/me", {
+        headers: { authorization: `Bearer ${validKey}` },
+      })),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("does not record the key as used when the plan refuses it", async () => {
+    // last_used_at is a signal that the key WORKED. Bumping it on a
+    // refusal makes a blocked integration look like a live one.
+    findActiveKeyByHash.mockResolvedValue(keyRow());
+    isApiAllowedForAccount.mockResolvedValue(false);
+
+    await requireApiKey(
+      new Request("https://x/api/v1/me", {
+        headers: { authorization: `Bearer ${validKey}` },
+      }),
+    ).catch(() => {});
+
+    expect(touchLastUsed).not.toHaveBeenCalled();
+  });
+
+  it("is not consulted for an unknown key", async () => {
+    // An unknown key must 401 before the plan is looked at, so a prober
+    // cannot learn which accounts have API access by timing or status.
+    findActiveKeyByHash.mockResolvedValue(null);
+
+    await expect(
+      requireApiKey(new Request("https://x/api/v1/me", {
+        headers: { authorization: `Bearer ${validKey}` },
+      })),
+    ).rejects.toMatchObject({ status: 401 });
+
+    expect(isApiAllowedForAccount).not.toHaveBeenCalled();
+  });
+
+  it("lets the request through when the plan allows it", async () => {
+    findActiveKeyByHash.mockResolvedValue(keyRow());
+    isApiAllowedForAccount.mockResolvedValue(true);
+
+    const ctx = await requireApiKey(
+      new Request("https://x/api/v1/me", {
+        headers: { authorization: `Bearer ${validKey}` },
+      }),
+    );
+    expect(ctx.accountId).toBe("acct-1");
   });
 });
