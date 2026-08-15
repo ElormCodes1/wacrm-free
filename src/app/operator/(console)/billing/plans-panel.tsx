@@ -28,6 +28,7 @@ export function PlansPanel({ plans }: { plans: Plan[] }) {
   const [currency, setCurrency] = useState('USD');
   const [interval, setInterval] = useState<'month' | 'year'>('month');
   const [description, setDescription] = useState('');
+  const [maxNumbers, setMaxNumbers] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -117,6 +118,20 @@ export function PlansPanel({ plans }: { plans: Plan[] }) {
               </select>
             </label>
 
+            <label className="basis-32 text-xs">
+              <span className="mb-1 block font-medium">
+                Numbers
+                <span className="text-muted-foreground font-normal"> — blank = ∞</span>
+              </span>
+              <input
+                value={maxNumbers}
+                onChange={(e) => setMaxNumbers(e.target.value)}
+                inputMode="numeric"
+                placeholder="unlimited"
+                className="border-border bg-background focus:ring-ring w-full rounded-md border px-2.5 py-1.5 text-sm tabular-nums focus:ring-2 focus:outline-none"
+              />
+            </label>
+
             <label className="w-full text-xs">
               <span className="mb-1 block font-medium">
                 Description
@@ -137,11 +152,19 @@ export function PlansPanel({ plans }: { plans: Plan[] }) {
               type="button"
               disabled={busy}
               onClick={async () => {
-                const ok = await post({ name, amount, currency, interval, description });
+                const ok = await post({
+                  name,
+                  amount,
+                  currency,
+                  interval,
+                  description,
+                  maxNumbers: maxNumbers.trim() === '' ? null : Number(maxNumbers),
+                });
                 if (ok) {
                   setName('');
                   setAmount('');
                   setDescription('');
+                  setMaxNumbers('');
                   setOpen(false);
                 }
               }}
@@ -170,7 +193,10 @@ export function PlansPanel({ plans }: { plans: Plan[] }) {
                   )}
                 </span>
                 <span className="text-muted-foreground block truncate text-xs">
-                  {p.description || `${p.subscribers} ${p.subscribers === 1 ? 'company' : 'companies'}`}
+                  {[
+                  p.maxNumbers === null ? 'unlimited numbers' : `${p.maxNumbers} number${p.maxNumbers === 1 ? '' : 's'}`,
+                  `${p.subscribers} ${p.subscribers === 1 ? 'company' : 'companies'}`,
+                ].join(' · ')}
                 </span>
               </span>
 

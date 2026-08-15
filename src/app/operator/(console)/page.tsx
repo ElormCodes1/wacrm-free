@@ -6,6 +6,7 @@ import { getOperator, recordOperatorAction } from '@/lib/operator/session';
 import { listCompanies, platformOverview, listOperatorAudit } from '@/lib/operator/companies';
 import { billingOverview } from '@/lib/operator/billing';
 import { formatMinor } from '@/lib/billing/money';
+import { planBreaches } from '@/lib/billing/limits';
 import {
   PageHeader,
   Metric,
@@ -71,6 +72,23 @@ export default async function OperatorOverview() {
             ? ` · ${formatMinor(c.amountMinor, c.currency)}`
             : ''),
       })),
+    // Over what their plan includes. Advisory: nothing has blocked them,
+    // and the point of showing it is that somebody can decide whether to
+    // move them up a tier or leave it alone.
+    ...companies.flatMap((c) =>
+      planBreaches({
+        numbers: c.numbers,
+        members: c.members,
+        maxNumbers: c.maxNumbers,
+        maxMembers: c.maxMembers,
+        planName: c.planName,
+      }).map((b) => ({
+        key: `limit-${c.id}-${b.kind}`,
+        company: c.name,
+        slug: c.slug,
+        text: `Over plan — ${b.text}`,
+      }))
+    ),
     ...companies
       .filter((c) => c.status === 'suspended')
       .map((c) => ({

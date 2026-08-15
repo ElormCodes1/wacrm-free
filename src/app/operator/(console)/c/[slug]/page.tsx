@@ -10,6 +10,7 @@ import {
 } from '@/lib/operator/companies';
 import { getCompanyBilling, listPlans } from '@/lib/operator/billing';
 import { privilegedClient } from '@/lib/supabase/privileged';
+import { planBreaches } from '@/lib/billing/limits';
 import { StatusControl } from './status-control';
 import { BillingPanel } from './billing-panel';
 import { NumberHealth } from './number-health';
@@ -143,7 +144,18 @@ export default async function OperatorCompany({
           />
         </div>
 
-        {health && <Problems health={health} />}
+        {health && (
+          <Problems
+            health={health}
+            overPlan={planBreaches({
+              numbers: company.numbers,
+              members: company.members,
+              maxNumbers: billing?.maxNumbers ?? null,
+              maxMembers: billing?.maxMembers ?? null,
+              planName: billing?.planName ?? null,
+            })}
+          />
+        )}
 
         {billing && (
           <BillingPanel
@@ -230,8 +242,18 @@ export default async function OperatorCompany({
  * Silent when everything is fine. A panel that always renders "0 failures"
  * teaches you to skip it, and then it is not there on the day it matters.
  */
-function Problems({ health }: { health: CompanyHealth }) {
+function Problems({
+  health,
+  overPlan,
+}: {
+  health: CompanyHealth;
+  overPlan: { text: string }[];
+}) {
   const problems = [
+    ...overPlan.map((b) => ({
+      title: `Using more than the plan includes`,
+      body: `${b.text}. Nothing is blocked — this is here so you can decide whether to move them up a tier.`,
+    })),
     health.numbers.some((n) => n.connectionState !== 'open') && {
       title: 'A number is not connected',
       body: 'Inbound messages stop while a socket is down. Use Check / restart below — it probes for real rather than trusting the stored state.',

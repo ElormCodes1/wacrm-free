@@ -5,6 +5,7 @@ import { getOperator, recordOperatorAction } from '@/lib/operator/session';
 import { listCompanies } from '@/lib/operator/companies';
 import { billingOverview, listPlans } from '@/lib/operator/billing';
 import { formatMinor } from '@/lib/billing/money';
+import { planBreaches } from '@/lib/billing/limits';
 import { PlansPanel } from './plans-panel';
 import {
   PageHeader,
@@ -96,6 +97,7 @@ export default async function OperatorBilling() {
                 <TH>Company</TH>
                 <TH>Plan</TH>
                 <TH align="right">Amount</TH>
+                <TH align="right">Numbers</TH>
                 <TH>Renews</TH>
                 <TH>Billing</TH>
                 <TH>Account</TH>
@@ -119,6 +121,31 @@ export default async function OperatorBilling() {
                       {c.amountMinor !== null && c.currency
                         ? formatMinor(c.amountMinor, c.currency)
                         : '—'}
+                    </TD>
+                    <TD align="right">
+                      {(() => {
+                        const over = planBreaches({
+                          numbers: c.numbers,
+                          members: c.members,
+                          maxNumbers: c.maxNumbers,
+                          maxMembers: c.maxMembers,
+                          planName: c.planName,
+                        }).some((b) => b.kind === 'numbers');
+                        const ceiling = c.maxNumbers === null ? '∞' : c.maxNumbers;
+                        return (
+                          <span
+                            className={
+                              over
+                                ? 'font-medium text-amber-600 dark:text-amber-400'
+                                : 'text-muted-foreground'
+                            }
+                            title={over ? 'Using more than this plan includes' : undefined}
+                          >
+                            {c.numbers}
+                            {c.planName ? ` / ${ceiling}` : ''}
+                          </span>
+                        );
+                      })()}
                     </TD>
                     <TD className="text-muted-foreground whitespace-nowrap">
                       {formatDate(c.periodEnd, '—')}

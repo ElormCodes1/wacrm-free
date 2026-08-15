@@ -41,6 +41,9 @@ export interface CompanySummary {
   periodEnd: string | null;
   amountMinor: number | null;
   currency: string | null;
+  /** What the plan says it includes. Null = unlimited. Advisory only. */
+  maxNumbers: number | null;
+  maxMembers: number | null;
 }
 
 export interface CompanyMember {
@@ -99,6 +102,8 @@ export async function listCompanies(query?: string): Promise<CompanySummary[]> {
         ? null
         : Number(row.amount_minor),
     currency: (row.currency as string) ?? null,
+    maxNumbers: row.max_numbers === null || row.max_numbers === undefined ? null : Number(row.max_numbers),
+    maxMembers: row.max_members === null || row.max_members === undefined ? null : Number(row.max_members),
   }));
 }
 
@@ -176,6 +181,8 @@ export async function getCompanyDetail(slug: string): Promise<CompanyDetail | nu
     periodEnd: null,
     amountMinor: null,
     currency: null,
+    maxNumbers: null,
+    maxMembers: null,
     membersList: members.map((m) => ({
       email: (m.email as string) ?? null,
       fullName: (m.full_name as string) ?? null,

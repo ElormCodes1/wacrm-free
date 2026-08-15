@@ -30,6 +30,9 @@ export interface Plan {
   name: string;
   description: string | null;
   highlight: boolean;
+  /** Advisory ceilings. Null = unlimited. */
+  maxNumbers: number | null;
+  maxMembers: number | null;
   amountMinor: number;
   currency: string;
   interval: 'month' | 'year';
@@ -79,6 +82,8 @@ export interface CompanyBilling {
   periodEnd: string | null;
   trialEndsAt: string | null;
   notes: string | null;
+  maxNumbers: number | null;
+  maxMembers: number | null;
   payments: Payment[];
   paidTotal: MoneyByCurrency[];
 }
@@ -89,7 +94,7 @@ export async function listPlans(includeRetired = false): Promise<Plan[]> {
   const db = privilegedClient('operator');
   let q = db
     .from('billing_plans')
-    .select('id, name, description, amount_minor, currency, interval, is_active, highlight')
+    .select('id, name, description, amount_minor, currency, interval, is_active, highlight, max_numbers, max_members')
     .order('amount_minor', { ascending: true });
   if (!includeRetired) q = q.eq('is_active', true);
 
@@ -109,6 +114,8 @@ export async function listPlans(includeRetired = false): Promise<Plan[]> {
     name: r.name as string,
     description: (r.description as string) ?? null,
     highlight: r.highlight === true,
+    maxNumbers: r.max_numbers === null || r.max_numbers === undefined ? null : Number(r.max_numbers),
+    maxMembers: r.max_members === null || r.max_members === undefined ? null : Number(r.max_members),
     amountMinor: Number(r.amount_minor ?? 0),
     currency: r.currency as string,
     interval: (r.interval as 'month' | 'year') ?? 'month',
@@ -160,6 +167,10 @@ export async function getCompanyBilling(accountId: string): Promise<CompanyBilli
     periodEnd: (b?.period_end as string) ?? null,
     trialEndsAt: (b?.trial_ends_at as string) ?? null,
     notes: (b?.notes as string) ?? null,
+    maxNumbers:
+      b?.max_numbers === undefined || b?.max_numbers === null ? null : Number(b.max_numbers),
+    maxMembers:
+      b?.max_members === undefined || b?.max_members === null ? null : Number(b.max_members),
     payments: ((d.payments ?? []) as Record<string, unknown>[]).map((p) => ({
       id: p.id as string,
       amountMinor: Number(p.amount_minor ?? 0),
@@ -186,6 +197,8 @@ export async function createPlan(input: {
   currency: string;
   interval: 'month' | 'year';
   description?: string | null;
+  maxNumbers?: number | null;
+  maxMembers?: number | null;
 }): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const db = privilegedClient('operator');
   const { data, error } = await db
@@ -196,6 +209,8 @@ export async function createPlan(input: {
       currency: input.currency,
       interval: input.interval,
       description: input.description ?? null,
+      max_numbers: input.maxNumbers ?? null,
+      max_members: input.maxMembers ?? null,
     })
     .select('id')
     .maybeSingle();
@@ -229,7 +244,12 @@ export async function setPlanActive(id: string, isActive: boolean): Promise<void
  */
 export async function updatePlanPresentation(
   id: string,
-  input: { description?: string | null; highlight?: boolean }
+  input: {
+    description?: string | null;
+    highlight?: boolean;
+    maxNumbers?: number | null;
+    maxMembers?: number | null;
+  }
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const db = privilegedClient('operator');
 
@@ -242,6 +262,10 @@ export async function updatePlanPresentation(
   const patch: Record<string, unknown> = {};
   if (input.description !== undefined) patch.description = input.description;
   if (input.highlight !== undefined) patch.highlight = input.highlight;
+  // Ceilings are advisory, so adjusting them changes nothing a customer
+  // can already do — safe to edit in place alongside the wording.
+  if (input.maxNumbers !== undefined) patch.max_numbers = input.maxNumbers;
+  if (input.maxMembers !== undefined) patch.max_members = input.maxMembers;
   if (Object.keys(patch).length === 0) return { ok: true };
 
   const { error } = await db.from('billing_plans').update(patch).eq('id', id);

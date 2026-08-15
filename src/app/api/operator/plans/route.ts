@@ -33,6 +33,8 @@ export async function POST(request: Request) {
     interval?: string;
     description?: string | null;
     highlight?: boolean;
+    maxNumbers?: number | null;
+    maxMembers?: number | null;
   };
 
   if (body.action === 'retire' || body.action === 'restore') {
@@ -55,6 +57,8 @@ export async function POST(request: Request) {
     const result = await updatePlanPresentation(body.id, {
       description: body.description === undefined ? undefined : (body.description || null),
       highlight: body.highlight,
+      maxNumbers: body.maxNumbers,
+      maxMembers: body.maxMembers,
     });
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
     await recordOperatorAction({
@@ -84,6 +88,12 @@ export async function POST(request: Request) {
     currency,
     interval,
     description: body.description?.trim() || null,
+    maxNumbers:
+      body.maxNumbers === undefined || body.maxNumbers === null
+        ? null
+        : Number.isInteger(body.maxNumbers) && body.maxNumbers > 0
+          ? body.maxNumbers
+          : null,
   });
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
 
