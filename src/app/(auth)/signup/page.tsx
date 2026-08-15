@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { previewSlug, isUsableSlug } from "@/lib/tenancy/slugify";
 import {
   Card,
   CardContent,
@@ -37,6 +38,8 @@ function SignupPageInner() {
   const inviteToken = searchParams.get("invite");
 
   const [fullName, setFullName] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const slugPreview = previewSlug(companyName);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -75,6 +78,8 @@ function SignupPageInner() {
       options: {
         data: {
           full_name: fullName,
+          // The address is derived from this, server-side.
+          company_name: companyName,
         },
         ...(emailRedirectTo ? { emailRedirectTo } : {}),
       },
@@ -155,6 +160,35 @@ function SignupPageInner() {
                 {error}
               </div>
             )}
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="companyName" className="text-muted-foreground">
+                Company name
+              </Label>
+              <Input
+                id="companyName"
+                type="text"
+                placeholder="Bright Motors"
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                required
+                className="border-border bg-muted text-foreground placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-primary/20"
+              />
+              {/* Show the address as they type. It is permanent once issued
+                  and it is what they will print, so discovering it later is
+                  how people end up with one they would not have chosen. */}
+              <p className="text-muted-foreground text-xs">
+                {slugPreview && isUsableSlug(slugPreview) ? (
+                  <>
+                    Your address will be{" "}
+                    <code className="text-foreground font-mono">/{slugPreview}</code>
+                    . This cannot be changed later.
+                  </>
+                ) : (
+                  "Your team will reach the system at this name."
+                )}
+              </p>
+            </div>
 
             <div className="flex flex-col gap-2">
               <Label htmlFor="fullName" className="text-muted-foreground">
