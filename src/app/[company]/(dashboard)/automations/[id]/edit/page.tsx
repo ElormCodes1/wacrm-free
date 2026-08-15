@@ -11,12 +11,15 @@ import {
   type ServerStepNode,
 } from "@/components/automations/automation-builder"
 import type { AutomationTriggerType } from "@/types"
+import { companyPath } from "@/lib/tenancy/routes";
+import { useCompanySlug } from "@/components/tenancy/company-link";
 
 export default function EditAutomationPage({
   params,
 }: {
   params: Promise<{ id: string }>
 }) {
+  const companySlug = useCompanySlug();
   const { id } = use(params)
   const router = useRouter()
   const [initial, setInitial] = useState<BuilderInitial | null>(null)
@@ -53,7 +56,7 @@ export default function EditAutomationPage({
       <div className="flex h-screen flex-col items-center justify-center gap-3">
         <p className="text-sm text-red-400">{error}</p>
         <button
-          onClick={() => router.push("/automations")}
+          onClick={() => router.push(companyPath(companySlug, "automations"))}
           className="text-sm text-primary hover:text-primary/80"
         >
           Back to Automations

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import { CompanyLink } from "@/components/tenancy/company-link";
 import { createClient } from "@/lib/supabase/client";
 import { useUnreadNotifications } from "@/hooks/use-unread-notifications";
 import type { Notification } from "@/types";
@@ -187,13 +187,13 @@ export function NotificationBell() {
             })
           )}
         </div>
-        <Link
-          href="/notifications"
+        <CompanyLink
+          to="notifications"
           onClick={() => setOpen(false)}
           className="block border-t border-border px-3 py-2 text-center text-xs font-medium text-primary hover:bg-muted"
         >
           See all
-        </Link>
+        </CompanyLink>
       </PopoverContent>
     </Popover>
   );

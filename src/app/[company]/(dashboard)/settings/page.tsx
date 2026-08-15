@@ -21,9 +21,12 @@ import {
   resolveSection,
   type SettingsSection,
 } from '@/components/settings/settings-sections';
+import { companyPath } from "@/lib/tenancy/routes";
+import { useCompanySlug } from "@/components/tenancy/company-link";
 
 export default function SettingsPage() {
   const router = useRouter();
+  const companySlug = useCompanySlug();
   const searchParams = useSearchParams();
   const { defaultCurrency, profile } = useAuth();
   // Hiding the rail entry isn't enough — `?tab=audit` is a deep link
@@ -41,7 +44,7 @@ export default function SettingsPage() {
   const go = (next: SettingsSection) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set('tab', next);
-    router.replace(`/settings?${params.toString()}`, { scroll: false });
+    router.replace(`${companyPath(companySlug, "settings")}?${params.toString()}`, { scroll: false });
   };
 
   // Cheap, fetch-free rail hints. The Overview landing carries the

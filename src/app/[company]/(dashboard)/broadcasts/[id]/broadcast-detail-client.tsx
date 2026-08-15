@@ -37,6 +37,8 @@ import {
   getBroadcastStatus,
   getRecipientStatus,
 } from '@/lib/broadcast-status';
+import { companyPath } from "@/lib/tenancy/routes";
+import { useCompanySlug } from "@/components/tenancy/company-link";
 
 interface StatCardProps {
   label: string;
@@ -153,6 +155,7 @@ export function BroadcastDetailClient({
   recipients: BroadcastRecipient[];
 }) {
   const router = useRouter();
+  const companySlug = useCompanySlug();
   const broadcastId = broadcast.id;
 
   const [statusFilter, setStatusFilter] = useState<RecipientStatus | 'all'>(
@@ -213,7 +216,7 @@ export function BroadcastDetailClient({
       return;
     }
     toast.success('Broadcast deleted');
-    router.push('/broadcasts');
+    router.push(companyPath(companySlug, "broadcasts"));
   }
 
   const status = getBroadcastStatus(broadcast.status);
@@ -233,7 +236,7 @@ export function BroadcastDetailClient({
           <Button
             variant="outline"
             size="icon"
-            onClick={() => router.push('/broadcasts')}
+            onClick={() => router.push(companyPath(companySlug, "broadcasts"))}
             className="border-border"
           >
             <ArrowLeft className="h-4 w-4" />

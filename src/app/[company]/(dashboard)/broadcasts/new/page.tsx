@@ -12,6 +12,8 @@ import { Step3Personalize } from '@/components/broadcasts/step3-personalize';
 import { Step4ScheduleSend } from '@/components/broadcasts/step4-schedule-send';
 import { useBroadcastSending } from '@/hooks/use-broadcast-sending';
 import { Check } from 'lucide-react';
+import { companyPath } from "@/lib/tenancy/routes";
+import { useCompanySlug } from "@/components/tenancy/company-link";
 
 const steps = [
   { label: 'Template', key: 'template' },
@@ -22,6 +24,7 @@ const steps = [
 
 export default function NewBroadcastPage() {
   const router = useRouter();
+  const companySlug = useCompanySlug();
   const { accountId } = useAuth();
   const { createAndSendBroadcast, isProcessing, progress } = useBroadcastSending();
 
@@ -61,7 +64,7 @@ export default function NewBroadcastPage() {
         variables,
         headerMediaUrl,
       });
-      router.push(`/broadcasts/${broadcastId}`);
+      router.push(companyPath(companySlug, "broadcasts", { segments: [broadcastId] }));
     } catch (err) {
       // Previously swallowed with console.error — the wizard would
       // just no-op, leaving the user confused. Surface the reason.
@@ -124,7 +127,7 @@ export default function NewBroadcastPage() {
       return;
     }
     toast.success('Draft saved');
-    router.push('/broadcasts');
+    router.push(companyPath(companySlug, "broadcasts"));
   }
 
   return (
@@ -191,7 +194,7 @@ export default function NewBroadcastPage() {
               selectedTemplate={template}
               onSelect={setTemplate}
               onNext={() => setCurrentStep(1)}
-              onBack={() => router.push('/broadcasts')}
+              onBack={() => router.push(companyPath(companySlug, "broadcasts"))}
             />
           )}
           {currentStep === 1 && (

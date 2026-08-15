@@ -22,6 +22,8 @@ import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { toast } from 'sonner';
 import { WifiOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { companyPath } from "@/lib/tenancy/routes";
+import { useCompanySlug } from "@/components/tenancy/company-link";
 
 // Remembers the agent's show/hide choice for the desktop contact panel
 // across reloads and sessions (device-scoped, like the theme prefs).
@@ -29,6 +31,7 @@ const CONTACT_PANEL_STORAGE_KEY = 'wacrm:inbox:contact-panel-open';
 
 export default function InboxPage() {
   const router = useRouter();
+  const companySlug = useCompanySlug();
   const searchParams = useSearchParams();
   /**
    * `?c=<id>` deep-link support. Used when landing here from the
@@ -688,7 +691,7 @@ export default function InboxPage() {
       // Reflect the selection in the URL so a refresh lands the user
       // back in the same thread, and so copy-paste links work. Use
       // replace() to avoid polluting browser history with every click.
-      router.replace(`/inbox?c=${conv.id}`, { scroll: false });
+      router.replace(companyPath(companySlug, "inbox", { query: { c: conv.id } }), { scroll: false });
     },
     [activeConversation?.id, router]
   );
@@ -716,7 +719,7 @@ export default function InboxPage() {
     // Let the deep-link handler adopt it once the list has the row.
     autoSelectedForDeepLinkRef.current = null;
     void hydrateConversation(convId);
-    router.replace(`/inbox?c=${convId}`, { scroll: false });
+    router.replace(companyPath(companySlug, "inbox", { query: { c: convId } }), { scroll: false });
   }, [
     peekConversationId,
     conversations,
@@ -735,7 +738,7 @@ export default function InboxPage() {
     // Clearing the ref lets the deep-link auto-selector fire again if
     // the user later visits /inbox?c=<same-id> — desirable UX.
     autoSelectedForDeepLinkRef.current = null;
-    router.replace('/inbox', { scroll: false });
+    router.replace(companyPath(companySlug, "inbox"), { scroll: false });
   }, [router]);
 
   const handleMessagesLoaded = useCallback((loaded: Message[]) => {

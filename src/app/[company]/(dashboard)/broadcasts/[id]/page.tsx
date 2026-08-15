@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { CompanyLinkFor } from '@/components/tenancy/company-link';
 import { createClient } from '@/lib/supabase/server';
 import type { Broadcast, BroadcastRecipient } from '@/types';
 import { BroadcastDetailClient } from './broadcast-detail-client';
@@ -9,9 +9,9 @@ import { BroadcastDetailClient } from './broadcast-detail-client';
 export default async function BroadcastDetailPage({
   params,
 }: {
-  params: Promise<{ id: string }>;
+  params: Promise<{ id: string; company: string }>;
 }) {
-  const { id } = await params;
+  const { id, company } = await params;
   const supabase = await createClient();
 
   const { data: broadcast } = await supabase
@@ -24,12 +24,13 @@ export default async function BroadcastDetailPage({
     return (
       <div className="flex h-64 flex-col items-center justify-center gap-2">
         <p className="text-sm text-red-400">Broadcast not found</p>
-        <Link
-          href="/broadcasts"
+        <CompanyLinkFor
+          company={company}
+          to="broadcasts"
           className="rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted"
         >
           Back to Broadcasts
-        </Link>
+        </CompanyLinkFor>
       </div>
     );
   }

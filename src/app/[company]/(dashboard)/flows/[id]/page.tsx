@@ -7,6 +7,8 @@ import { toast } from "sonner";
 
 import { FlowEditorShell } from "@/components/flows/flow-editor-shell";
 import type { FlowRow, FlowNodeRow } from "@/lib/flows/types";
+import { companyPath } from "@/lib/tenancy/routes";
+import { useCompanySlug } from "@/components/tenancy/company-link";
 
 /**
  * Flow editor shell.
@@ -22,6 +24,7 @@ import type { FlowRow, FlowNodeRow } from "@/lib/flows/types";
  */
 export default function FlowEditorPage() {
   const router = useRouter();
+  const companySlug = useCompanySlug();
   const params = useParams<{ id: string }>();
 
   const [flow, setFlow] = useState<FlowRow | null>(null);
@@ -75,7 +78,7 @@ export default function FlowEditorPage() {
         <p className="text-sm text-muted-foreground">Flow not found.</p>
         <button
           type="button"
-          onClick={() => router.push("/flows")}
+          onClick={() => router.push(companyPath(companySlug, "flows"))}
           className="text-sm text-primary hover:opacity-80"
         >
           ← Back to flows

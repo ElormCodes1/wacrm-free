@@ -17,6 +17,8 @@ import { Radio, Plus } from 'lucide-react';
 import { useCan } from '@/hooks/use-can';
 import { GatedButton } from '@/components/ui/gated-button';
 import { getBroadcastStatus } from '@/lib/broadcast-status';
+import { companyPath } from "@/lib/tenancy/routes";
+import { useCompanySlug } from "@/components/tenancy/company-link";
 
 /**
  * Poll cadence while any broadcast is sending. Kept modest so we don't
@@ -64,6 +66,7 @@ function RateCell({
  */
 export function BroadcastsClient({ initial }: { initial: Broadcast[] }) {
   const router = useRouter();
+  const companySlug = useCompanySlug();
   const canCreate = useCan('send-messages');
   const [broadcasts, setBroadcasts] = useState<Broadcast[]>(initial);
   const [error, setError] = useState<string | null>(null);
@@ -179,7 +182,7 @@ export function BroadcastsClient({ initial }: { initial: Broadcast[] }) {
           <GatedButton
             canAct={canCreate}
             gateReason="create broadcasts"
-            onClick={() => router.push('/broadcasts/new')}
+            onClick={() => router.push(companyPath(companySlug, "broadcasts", { segments: ["new"] }))}
             className="bg-primary text-primary-foreground hover:bg-primary/90"
           >
             <Plus className="h-4 w-4" />
@@ -198,7 +201,7 @@ export function BroadcastsClient({ initial }: { initial: Broadcast[] }) {
           <GatedButton
             canAct={canCreate}
             gateReason="create broadcasts"
-            onClick={() => router.push('/broadcasts/new')}
+            onClick={() => router.push(companyPath(companySlug, "broadcasts", { segments: ["new"] }))}
             className="mt-4 bg-primary text-primary-foreground hover:bg-primary/90"
           >
             <Plus className="h-4 w-4" />
@@ -228,7 +231,7 @@ export function BroadcastsClient({ initial }: { initial: Broadcast[] }) {
                   <TableRow
                     key={broadcast.id}
                     className="cursor-pointer border-border hover:bg-muted/50"
-                    onClick={() => router.push(`/broadcasts/${broadcast.id}`)}
+                    onClick={() => router.push(companyPath(companySlug, "broadcasts", { segments: [broadcast.id] }))}
                   >
                     <TableCell className="font-medium text-foreground">
                       {broadcast.name}

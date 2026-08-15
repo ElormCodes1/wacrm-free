@@ -19,6 +19,8 @@ import { format, formatDistanceToNow } from "date-fns";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { companyPath } from "@/lib/tenancy/routes";
+import { useCompanySlug } from "@/components/tenancy/company-link";
 
 /**
  * Run history viewer.
@@ -95,6 +97,7 @@ const STATUS_META: Record<
 
 export default function FlowRunsPage() {
   const router = useRouter();
+  const companySlug = useCompanySlug();
   const params = useParams<{ id: string }>();
 
   const [flow, setFlow] = useState<{ id: string; name: string } | null>(null);
@@ -161,7 +164,7 @@ export default function FlowRunsPage() {
         <p className="text-sm text-muted-foreground">Flow not found.</p>
         <button
           type="button"
-          onClick={() => router.push("/flows")}
+          onClick={() => router.push(companyPath(companySlug, "flows"))}
           className="text-sm text-primary hover:opacity-80"
         >
           ← Back to flows

@@ -20,12 +20,15 @@ import type {
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { formatRelative } from "@/lib/automations/trigger-meta"
+import { companyPath } from "@/lib/tenancy/routes";
+import { useCompanySlug } from "@/components/tenancy/company-link";
 
 export default function AutomationLogsPage({
   params,
 }: {
   params: Promise<{ id: string }>
 }) {
+  const companySlug = useCompanySlug();
   const { id } = use(params)
   const router = useRouter()
 
@@ -66,7 +69,7 @@ export default function AutomationLogsPage({
     return (
       <div className="flex h-64 flex-col items-center justify-center gap-3">
         <p className="text-sm text-red-400">{error}</p>
-        <Button variant="outline" onClick={() => router.push("/automations")}>
+        <Button variant="outline" onClick={() => router.push(companyPath(companySlug, "automations"))}>
           Back
         </Button>
       </div>
@@ -86,7 +89,7 @@ export default function AutomationLogsPage({
       <div className="flex items-center gap-3">
         <button
           type="button"
-          onClick={() => router.push("/automations")}
+          onClick={() => router.push(companyPath(companySlug, "automations"))}
           className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           aria-label="Back"
         >

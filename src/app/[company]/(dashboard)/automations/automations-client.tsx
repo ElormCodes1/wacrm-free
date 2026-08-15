@@ -42,6 +42,8 @@ import {
 import { AUTOMATION_TEMPLATES, type TemplateSlug } from "@/lib/automations/templates"
 import { triggerMeta, formatRelative } from "@/lib/automations/trigger-meta"
 import { cn } from "@/lib/utils"
+import { companyPath } from "@/lib/tenancy/routes";
+import { useCompanySlug } from "@/components/tenancy/company-link";
 
 const TEMPLATE_ORDER: TemplateSlug[] = [
   "welcome_message",
@@ -59,6 +61,7 @@ const TEMPLATE_ICON: Record<TemplateSlug, typeof Zap> = {
 
 export function AutomationsClient({ initial }: { initial: Automation[] }) {
   const router = useRouter()
+  const companySlug = useCompanySlug()
   const canCreate = useCan("send-messages")
   // Seeded from the server so the first paint shows the list; the mount
   // load() refreshes.
@@ -134,7 +137,7 @@ export function AutomationsClient({ initial }: { initial: Automation[] }) {
   }
 
   async function startFromTemplate(slug: TemplateSlug) {
-    router.push(`/automations/new?template=${slug}`)
+    router.push(companyPath(companySlug, "automations", { segments: ["new"], query: { template: slug } }))
   }
 
   if (error) {
@@ -170,7 +173,7 @@ export function AutomationsClient({ initial }: { initial: Automation[] }) {
         <GatedButton
           canAct={canCreate}
           gateReason="create automations"
-          onClick={() => router.push("/automations/new")}
+          onClick={() => router.push(companyPath(companySlug, "automations", { segments: ['new'] }))}
           className="bg-primary text-primary-foreground hover:bg-primary/90"
         >
           <Plus className="h-4 w-4" />

@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { CompanyLink } from "@/components/tenancy/company-link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { LogOut, Menu, Settings as SettingsIcon, User } from "lucide-react";
@@ -115,8 +115,9 @@ export function Header({ onOpenSidebar }: HeaderProps) {
           <DropdownMenuSeparator className="bg-border" />
           <DropdownMenuItem
             render={
-              <Link
-                href="/settings?tab=profile"
+              <CompanyLink
+                to="settings"
+                query={{ tab: "profile" }}
                 className="text-popover-foreground focus:bg-accent focus:text-accent-foreground"
               />
             }
@@ -126,8 +127,9 @@ export function Header({ onOpenSidebar }: HeaderProps) {
           </DropdownMenuItem>
           <DropdownMenuItem
             render={
-              <Link
-                href="/settings?tab=whatsapp"
+              <CompanyLink
+                to="settings"
+                query={{ tab: "whatsapp" }}
                 className="text-popover-foreground focus:bg-accent focus:text-accent-foreground"
               />
             }

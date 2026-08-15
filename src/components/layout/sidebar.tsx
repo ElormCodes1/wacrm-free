@@ -1,6 +1,19 @@
 "use client";
 
-import Link from "next/link";
+import { CompanyLink } from "@/components/tenancy/company-link";
+import type { CompanyRoute } from "@/lib/tenancy/routes";
+import { splitCompanyPath } from "@/lib/tenancy/routes";
+
+/**
+ * The route part of a company path: "/acme/inbox" -> "inbox".
+ *
+ * Active state has to compare routes rather than paths now that every
+ * address is prefixed by a company — comparing whole paths would light up
+ * nothing, quietly, on every page.
+ */
+function routeOf(pathname: string): string {
+  return splitCompanyPath(pathname).rest.replace(/^\//, "");
+}
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 import { cn } from "@/lib/utils";
@@ -83,7 +96,9 @@ import {
 import { BrandLogo } from "@/components/layout/brand-logo";
 
 interface NavItem {
-  href: string;
+  /** A route from the closed union, not a path — the company is added by
+   *  CompanyLink, so a nav entry cannot drop it. */
+  to: CompanyRoute;
   label: string;
   icon: typeof LayoutDashboard;
   /**
@@ -94,23 +109,23 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/inbox", label: "Inbox", icon: MessageSquare },
-  { href: "/tasks", label: "Tasks", icon: CheckSquare },
-  { href: "/contacts", label: "Contacts", icon: Users },
-  { href: "/pipelines", label: "Pipelines", icon: GitBranch },
-  { href: "/broadcasts", label: "Broadcasts", icon: Radio },
-  { href: "/channels", label: "Channels", icon: Megaphone },
-  { href: "/communities", label: "Communities", icon: Users2 },
-  { href: "/store", label: "Store", icon: Store },
-  { href: "/status", label: "Status", icon: CircleDashed },
-  { href: "/automations", label: "Automations", icon: Zap },
-  { href: "/flows", label: "Flows", icon: Workflow, beta: true },
-  { href: "/agents", label: "AI Agents", icon: Bot },
+  { to: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { to: "inbox", label: "Inbox", icon: MessageSquare },
+  { to: "tasks", label: "Tasks", icon: CheckSquare },
+  { to: "contacts", label: "Contacts", icon: Users },
+  { to: "pipelines", label: "Pipelines", icon: GitBranch },
+  { to: "broadcasts", label: "Broadcasts", icon: Radio },
+  { to: "channels", label: "Channels", icon: Megaphone },
+  { to: "communities", label: "Communities", icon: Users2 },
+  { to: "store", label: "Store", icon: Store },
+  { to: "status", label: "Status", icon: CircleDashed },
+  { to: "automations", label: "Automations", icon: Zap },
+  { to: "flows", label: "Flows", icon: Workflow, beta: true },
+  { to: "agents", label: "AI Agents", icon: Bot },
 ];
 
-const bottomNavItems = [
-  { href: "/settings", label: "Settings", icon: Settings },
+const bottomNavItems: NavItem[] = [
+  { to: "settings", label: "Settings", icon: Settings },
 ];
 
 interface SidebarProps {
@@ -191,12 +206,12 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         {/* Logo row. On mobile we put a close button here; on desktop the
             close button is hidden since the sidebar is always-visible. */}
         <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border bg-secondary px-4">
-          <Link href="/dashboard" className="flex items-center gap-2">
+          <CompanyLink to="dashboard" className="flex items-center gap-2">
             <BrandLogo className="h-8 w-8 shrink-0" />
             <span className="text-sm font-semibold text-foreground">
               WaCRM
             </span>
-          </Link>
+          </CompanyLink>
           <button
             type="button"
             onClick={onClose}
@@ -212,16 +227,16 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
           <ul className="flex flex-col gap-1">
             {navItems.map((item) => {
               const isActive =
-                pathname === item.href ||
-                (item.href !== "/dashboard" && pathname.startsWith(item.href));
+                routeOf(pathname) === item.to ||
+                (item.to !== "dashboard" && routeOf(pathname).startsWith(item.to));
 
               const showUnreadDot =
-                item.href === "/inbox" && totalUnread > 0 && !isActive;
+                item.to === "inbox" && totalUnread > 0 && !isActive;
 
               return (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
+                <li key={item.to}>
+                  <CompanyLink
+                    to={item.to}
                     className={cn(
                       // Taller on mobile so fingers can hit the row reliably (≥44px).
                       "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
@@ -249,7 +264,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                         <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
                       </span>
                     )}
-                  </Link>
+                  </CompanyLink>
                 </li>
               );
             })}
@@ -259,11 +274,11 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
 
           <ul className="flex flex-col gap-1">
             {bottomNavItems.map((item) => {
-              const isActive = pathname.startsWith(item.href);
+              const isActive = routeOf(pathname).startsWith(item.to);
               return (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
+                <li key={item.to}>
+                  <CompanyLink
+                    to={item.to}
                     className={cn(
                       "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
                       isActive
@@ -273,7 +288,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                   >
                     <item.icon className="h-4 w-4" />
                     {item.label}
-                  </Link>
+                  </CompanyLink>
                 </li>
               );
             })}
@@ -349,8 +364,9 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
             >
               <DropdownMenuItem
                 render={
-                  <Link
-                    href="/settings?tab=profile"
+                  <CompanyLink
+                    to="settings"
+                    query={{ tab: "profile" }}
                     onClick={onClose}
                     className="text-popover-foreground focus:bg-accent focus:text-accent-foreground"
                   />
@@ -361,8 +377,9 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
               </DropdownMenuItem>
               <DropdownMenuItem
                 render={
-                  <Link
-                    href="/settings?tab=whatsapp"
+                  <CompanyLink
+                    to="settings"
+                    query={{ tab: "whatsapp" }}
                     onClick={onClose}
                     className="text-popover-foreground focus:bg-accent focus:text-accent-foreground"
                   />

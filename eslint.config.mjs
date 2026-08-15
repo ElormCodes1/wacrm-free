@@ -15,6 +15,71 @@ const eslintConfig = defineConfig([
     // Vendored minified opus-recorder encoder worker (served statically).
     "public/opus/**",
   ]),
+
+  // ============================================================
+  // Company-area link safety
+  //
+  // A link that drops the company is a silent failure: the address still
+  // looks valid, the page around it renders, and it only 404s when
+  // somebody clicks — usually from inside a condition that no walkthrough
+  // exercises. So the bad link is made unwritable rather than discouraged.
+  //
+  // Inside a company area the only way to link is <CompanyLink to="...">,
+  // which reads the company from context and takes a route from a closed
+  // union. These rules close the two escape hatches: importing next/link
+  // directly, and hand-writing an href. Both fail lint, which runs in CI —
+  // before a browser ever sees the page.
+  // ============================================================
+  {
+    files: [
+      // Brackets are escaped: in a glob, [company] is a CHARACTER CLASS
+      // matching one of c,o,m,p,a,n,y — so the unescaped form silently
+      // matches nothing and the rule protects nothing while looking
+      // perfectly configured.
+      "src/app/\\[company\\]/**/*.tsx",
+      "src/app/\\[company\\]/**/*.ts",
+      "src/components/inbox/**/*.tsx",
+      "src/components/layout/**/*.tsx",
+      "src/components/settings/**/*.tsx",
+      "src/components/search/**/*.tsx",
+    ],
+    ignores: ["src/components/tenancy/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "next/link",
+              message:
+                "Inside a company area, use <CompanyLink to=\"...\"> from @/components/tenancy/company-link. A raw next/link can omit the company, which 404s only when clicked.",
+            },
+          ],
+        },
+      ],
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "JSXAttribute[name.name='href'][value.type='Literal'][value.value=/^\\//]",
+          message:
+            "Absolute href inside a company area drops the company. Use <CompanyLink to=\"...\"> or companyPath(slug, route).",
+        },
+        {
+          selector:
+            "JSXAttribute[name.name='href'] JSXExpressionContainer > TemplateLiteral[quasis.0.value.raw=/^\\//]",
+          message:
+            "Template-literal href starting with '/' drops the company. Use companyPath(slug, route) so the company cannot be forgotten.",
+        },
+        {
+          selector:
+            "CallExpression[callee.property.name=/^(push|replace)$/] > Literal.arguments:first-child[value=/^\\/(?!login|signup|forgot-password|join|$)/]",
+          message:
+            "router.push/replace with an absolute path drops the company. Use companyPath(slug, route).",
+        },
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;

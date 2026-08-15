@@ -5,15 +5,21 @@ import { routeSegments, allReservedSlugs, FUTURE_RESERVED } from './reserved-slu
 const APP_DIR = join(process.cwd(), 'src', 'app');
 
 describe('routeSegments', () => {
-  it('finds the real URL segments the app serves', () => {
+  it('finds the real top-level URL segments the app serves', () => {
     const segments = routeSegments(APP_DIR);
-    // Served at /inbox even though the folder is (dashboard)/inbox — a
-    // route group contributes nothing to the URL, so its children are
-    // top-level names and are exactly what a company could collide with.
-    expect(segments).toContain('inbox');
-    expect(segments).toContain('settings');
+    // Route groups contribute nothing to the URL, so (auth)/login is
+    // served at /login — a top-level name a company could collide with.
     expect(segments).toContain('login');
+    expect(segments).toContain('signup');
     expect(segments).toContain('api');
+    expect(segments).toContain('join');
+  });
+
+  it('does not count company-area pages as top-level names', () => {
+    // They live below the company segment now — /acme/inbox — so they
+    // cannot collide with a slug. They are still reserved (see
+    // allReservedSlugs), just not because of a live collision.
+    expect(routeSegments(APP_DIR)).not.toContain('inbox');
   });
 
   it('does not treat route groups or dynamic segments as claimable words', () => {
@@ -35,6 +41,13 @@ describe('allReservedSlugs', () => {
     }
   });
 
+  it('covers every page inside a company area too', () => {
+    const reserved = new Set(allReservedSlugs(APP_DIR));
+    for (const route of ['inbox', 'settings', 'contacts', 'broadcasts']) {
+      expect(reserved.has(route)).toBe(true);
+    }
+  });
+
   it('covers the words a hosted product will want', () => {
     const reserved = new Set(allReservedSlugs(APP_DIR));
     for (const word of FUTURE_RESERVED) {
@@ -47,7 +60,7 @@ describe('allReservedSlugs', () => {
     // Asserted explicitly because the property is the point: if someone
     // replaces the walk with a hardcoded array, this fails.
     const segments = routeSegments(APP_DIR);
-    expect(segments.length).toBeGreaterThan(5);
+    expect(segments.length).toBeGreaterThan(3);
     const reserved = allReservedSlugs(APP_DIR);
     expect(segments.every((s) => reserved.includes(s))).toBe(true);
   });

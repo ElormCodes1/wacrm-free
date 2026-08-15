@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import Link from 'next/link';
+import { CompanyLink } from '@/components/tenancy/company-link';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import type {
@@ -496,9 +496,10 @@ export function ContactSidebar({
                     </p>
                   ) : (
                     deals.map((deal) => (
-                      <Link
+                      <CompanyLink
                         key={deal.id}
-                        href={`/pipelines?pipeline=${deal.pipeline_id}&deal=${deal.id}`}
+                        to="pipelines"
+                        query={{ pipeline: deal.pipeline_id, deal: deal.id }}
                         className="bg-muted hover:bg-muted/70 block rounded-lg px-3 py-2 transition-colors"
                         title="Open this deal in Pipelines"
                       >
@@ -522,7 +523,7 @@ export function ContactSidebar({
                             </span>
                           )}
                         </div>
-                      </Link>
+                      </CompanyLink>
                     ))
                   )}
 

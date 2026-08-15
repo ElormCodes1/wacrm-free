@@ -22,6 +22,8 @@ import {
 } from "lucide-react";
 import { format, isPast, isToday } from "date-fns";
 import { toast } from "sonner";
+import { companyPath } from "@/lib/tenancy/routes";
+import { useCompanySlug } from "@/components/tenancy/company-link";
 
 // Sort helper for the "To do" list: overdue first, then soonest due,
 // then tasks with no due date last.
@@ -46,6 +48,7 @@ function contactLabel(t: Task): string | null {
 
 export function TasksClient({ initial }: { initial: Task[] }) {
   const router = useRouter();
+  const companySlug = useCompanySlug();
   const searchParams = useSearchParams();
   const { accountId } = useAuth();
 
@@ -222,7 +225,7 @@ export function TasksClient({ initial }: { initial: Task[] }) {
                     onToggle={toggleComplete}
                     onEdit={openEdit}
                     onOpenContact={(convId) =>
-                      router.push(`/inbox?c=${convId}`)
+                      router.push(companyPath(companySlug, "inbox", { query: { c: convId } }))
                     }
                   />
                 ))}
@@ -243,7 +246,7 @@ export function TasksClient({ initial }: { initial: Task[] }) {
                     onToggle={toggleComplete}
                     onEdit={openEdit}
                     onOpenContact={(convId) =>
-                      router.push(`/inbox?c=${convId}`)
+                      router.push(companyPath(companySlug, "inbox", { query: { c: convId } }))
                     }
                   />
                 ))}

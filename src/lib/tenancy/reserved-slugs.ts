@@ -1,6 +1,8 @@
 import { readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { COMPANY_ROUTES } from './routes';
+
 /**
  * Words a company may not claim as its address.
  *
@@ -79,7 +81,19 @@ export const FUTURE_RESERVED: readonly string[] = [
   'delete', 'test', 'testing', 'staging', 'dev',
 ] as const;
 
-/** The complete reserved set: what the app serves, plus what it will want. */
+/**
+ * The complete reserved set: what the app serves at the top level, every
+ * route inside a company area, and what a hosted product will want.
+ *
+ * Company routes cannot collide today — they live BELOW the company
+ * segment, so /acme/inbox and a company called "inbox" never meet. They
+ * are reserved anyway: if a page is ever promoted to the top level, or a
+ * marketing page claims the word, a company already printing it would be
+ * shadowed with no way back. Holding the word costs nothing now and is
+ * impossible to reclaim later.
+ */
 export function allReservedSlugs(appDir: string): string[] {
-  return [...new Set([...routeSegments(appDir), ...FUTURE_RESERVED])].sort();
+  return [
+    ...new Set([...routeSegments(appDir), ...COMPANY_ROUTES, ...FUTURE_RESERVED]),
+  ].sort();
 }
