@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { Search } from 'lucide-react';
 
 import { getOperator, recordOperatorAction } from '@/lib/operator/session';
-import { listCompanies } from '@/lib/operator/companies';
+import { listCompanies, platformOverview } from '@/lib/operator/companies';
 
 /**
  * The company list.
@@ -31,11 +31,60 @@ export default async function OperatorHome({
     ip,
   });
 
-  const companies = await listCompanies(q);
+  const [companies, overview] = await Promise.all([listCompanies(q), platformOverview()]);
   const suspended = companies.filter((c) => c.status === 'suspended').length;
+
+  // Things worth acting on today. Shown only when non-zero: a row of
+  // permanent zeroes trains you to stop reading the row.
+  const attention = [
+    overview.numbersDown > 0 && {
+      label: overview.numbersDown === 1 ? '1 number down' : `${overview.numbersDown} numbers down`,
+    },
+    overview.automationsFailed7d > 0 && {
+      label: `${overview.automationsFailed7d} automation failures (7d)`,
+    },
+    overview.mediaFailed7d > 0 && { label: `${overview.mediaFailed7d} media failures (7d)` },
+    overview.companiesSuspended > 0 && { label: `${overview.companiesSuspended} suspended` },
+    overview.companiesDormant > 0 && {
+      label: `${overview.companiesDormant} dormant (30d)`,
+      muted: true,
+    },
+  ].filter(Boolean) as { label: string; muted?: boolean }[];
 
   return (
     <main className="mx-auto max-w-5xl p-6">
+      <section className="mb-6">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <Metric label="Companies" value={overview.companiesTotal} sub={`${overview.companiesActive} active`} />
+          <Metric label="New (30d)" value={overview.signups30d} sub={`${overview.signups7d} this week`} />
+          <Metric
+            label="Numbers"
+            value={overview.numbersConnected}
+            sub={`of ${overview.numbersTotal} connected`}
+            bad={overview.numbersDown > 0}
+          />
+          <Metric label="Messages (24h)" value={overview.messages24h} sub={`${overview.messages7d} this week`} />
+          <Metric label="Contacts" value={overview.contactsTotal} sub="across all companies" />
+        </div>
+
+        {attention.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {attention.map((a) => (
+              <span
+                key={a.label}
+                className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                  a.muted
+                    ? 'bg-muted text-muted-foreground'
+                    : 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                }`}
+              >
+                {a.label}
+              </span>
+            ))}
+          </div>
+        )}
+      </section>
+
       <header className="mb-5 flex flex-wrap items-baseline justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">Companies</h1>
@@ -96,5 +145,27 @@ export default async function OperatorHome({
         </ul>
       )}
     </main>
+  );
+}
+
+function Metric({
+  label,
+  value,
+  sub,
+  bad,
+}: {
+  label: string;
+  value: number;
+  sub: string;
+  bad?: boolean;
+}) {
+  return (
+    <div className="border-border rounded-md border p-3">
+      <p className={`text-2xl font-semibold ${bad ? 'text-amber-600 dark:text-amber-400' : ''}`}>
+        {value}
+      </p>
+      <p className="text-sm font-medium">{label}</p>
+      <p className="text-muted-foreground text-xs">{sub}</p>
+    </div>
   );
 }

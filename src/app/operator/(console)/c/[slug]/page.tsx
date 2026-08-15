@@ -3,8 +3,9 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 
 import { getOperator, recordOperatorAction } from '@/lib/operator/session';
-import { getCompanyDetail } from '@/lib/operator/companies';
+import { getCompanyDetail, getCompanyHealth, type CompanyHealth } from '@/lib/operator/companies';
 import { StatusControl } from './status-control';
+import { NumberHealth } from './number-health';
 
 /**
  * One customer's company, in full.
@@ -23,6 +24,9 @@ export default async function OperatorCompany({
 
   const { slug } = await params;
   const company = await getCompanyDetail(slug);
+  // Health is the question support starts from, so it is fetched with the
+  // company rather than behind another click.
+  const health = company ? await getCompanyHealth(company.id) : null;
 
   const ip = (await headers()).get('x-forwarded-for');
   await recordOperatorAction({
@@ -113,27 +117,18 @@ export default async function OperatorCompany({
       </Panel>
 
       <Panel title="WhatsApp numbers">
-        {company.numbersList.length === 0 ? (
+        {!health || health.numbers.length === 0 ? (
           <Empty>No numbers connected.</Empty>
         ) : (
           <ul className="divide-border divide-y">
-            {company.numbersList.map((n) => (
-              <li key={n.instanceName ?? n.label} className="flex items-center gap-3 px-3 py-2">
-                <span className="min-w-0 flex-1 truncate text-sm">{n.label || 'Unlabelled'}</span>
-                <span
-                  className={`text-xs ${
-                    n.connectionState === 'open'
-                      ? 'text-emerald-600 dark:text-emerald-400'
-                      : 'text-muted-foreground'
-                  }`}
-                >
-                  {n.connectionState ?? n.status ?? 'unknown'}
-                </span>
-              </li>
+            {health.numbers.map((n) => (
+              <NumberHealth key={n.id} slug={company.slug ?? ''} number={n} />
             ))}
           </ul>
         )}
       </Panel>
+
+      {health && <Problems health={health} />}
 
       <StatusControl
         slug={company.slug ?? ''}
@@ -187,4 +182,63 @@ function formatDate(iso: string): string {
     month: 'short',
     day: 'numeric',
   });
+}
+
+/**
+ * What is currently wrong, if anything.
+ *
+ * Silent when everything is fine. A panel that always renders "0 failures"
+ * teaches you to skip it, and then it is not there on the day it matters.
+ */
+function Problems({ health }: { health: CompanyHealth }) {
+  const problems = [
+    health.numbers.some((n) => n.connectionState !== 'open') && {
+      title: 'A number is not connected',
+      body: 'Inbound messages stop while a socket is down. Use Check / restart above — it probes for real rather than trusting the stored state.',
+    },
+    health.automationsFailed7d > 0 && {
+      title: `${health.automationsFailed7d} automation ${health.automationsFailed7d === 1 ? 'failure' : 'failures'} in 7 days`,
+      body: health.automationLastError ?? 'No error message recorded.',
+    },
+    health.mediaFailed7d > 0 && {
+      title: `${health.mediaFailed7d} media ${health.mediaFailed7d === 1 ? 'download' : 'downloads'} failed in 7 days`,
+      body: 'Voice notes, images or documents that arrived but could not be stored. The customer sees a broken attachment.',
+    },
+    health.broadcastsWithFailures7d > 0 && {
+      title: `${health.broadcastsWithFailures7d} ${health.broadcastsWithFailures7d === 1 ? 'broadcast' : 'broadcasts'} had failed recipients`,
+      body: 'Some recipients did not receive the message.',
+    },
+  ].filter(Boolean) as { title: string; body: string }[];
+
+  const quiet = health.messages24h === 0 && health.inboundStale;
+
+  if (problems.length === 0 && !quiet) return null;
+
+  return (
+    <section>
+      <h2 className="text-muted-foreground mb-2 text-xs font-semibold tracking-wider uppercase">
+        Needs attention
+      </h2>
+      <div className="space-y-2">
+        {problems.map((p) => (
+          <div
+            key={p.title}
+            className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm"
+          >
+            <p className="font-medium text-amber-600 dark:text-amber-400">{p.title}</p>
+            <p className="text-muted-foreground mt-1 text-xs">{p.body}</p>
+          </div>
+        ))}
+        {quiet && (
+          <div className="border-border rounded-md border p-3 text-sm">
+            <p className="font-medium">Nothing received recently</p>
+            <p className="text-muted-foreground mt-1 text-xs">
+              Last inbound message {formatDate(health.lastInboundAt!)}. Could be a quiet customer,
+              or a number that looks connected and is not — worth a check above.
+            </p>
+          </div>
+        )}
+      </div>
+    </section>
+  );
 }

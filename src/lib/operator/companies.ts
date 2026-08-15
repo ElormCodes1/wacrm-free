@@ -244,3 +244,99 @@ export async function listOperatorAudit(limit = 200): Promise<AuditEntry[]> {
     occurredAt: r.occurred_at as string,
   }));
 }
+
+// ---------------------------------------------------------------- platform
+
+export interface PlatformOverview {
+  companiesTotal: number;
+  companiesActive: number;
+  companiesSuspended: number;
+  companiesDormant: number;
+  signups7d: number;
+  signups30d: number;
+  numbersTotal: number;
+  numbersConnected: number;
+  numbersDown: number;
+  contactsTotal: number;
+  messages24h: number;
+  messages7d: number;
+  mediaFailed7d: number;
+  automationsFailed7d: number;
+}
+
+/**
+ * How the platform is doing, in one query.
+ *
+ * A dozen aggregates as a dozen PostgREST calls would be a dozen round
+ * trips, and counting messages needs a join the client cannot express —
+ * so this is a SQL function, granted to service_role only.
+ */
+export async function platformOverview(): Promise<PlatformOverview> {
+  const db = privilegedClient('operator');
+  const { data } = await db.rpc('operator_platform_overview');
+  const d = (data ?? {}) as Record<string, number>;
+  return {
+    companiesTotal: d.companies_total ?? 0,
+    companiesActive: d.companies_active ?? 0,
+    companiesSuspended: d.companies_suspended ?? 0,
+    companiesDormant: d.companies_dormant ?? 0,
+    signups7d: d.signups_7d ?? 0,
+    signups30d: d.signups_30d ?? 0,
+    numbersTotal: d.numbers_total ?? 0,
+    numbersConnected: d.numbers_connected ?? 0,
+    numbersDown: d.numbers_down ?? 0,
+    contactsTotal: d.contacts_total ?? 0,
+    messages24h: d.messages_24h ?? 0,
+    messages7d: d.messages_7d ?? 0,
+    mediaFailed7d: d.media_failed_7d ?? 0,
+    automationsFailed7d: d.automations_failed_7d ?? 0,
+  };
+}
+
+export interface CompanyNumberHealth {
+  id: string;
+  label: string | null;
+  instanceName: string | null;
+  connectionState: string | null;
+  status: string | null;
+  lastError: string | null;
+}
+
+export interface CompanyHealth {
+  messages24h: number;
+  lastInboundAt: string | null;
+  lastOutboundAt: string | null;
+  /** No inbound message for 3+ days — computed server-side, not at render. */
+  inboundStale: boolean;
+  mediaFailed7d: number;
+  automationsFailed7d: number;
+  automationLastError: string | null;
+  broadcastsWithFailures7d: number;
+  numbers: CompanyNumberHealth[];
+}
+
+/** What is currently wrong in one company — where support starts. */
+export async function getCompanyHealth(accountId: string): Promise<CompanyHealth> {
+  const db = privilegedClient('operator');
+  const { data } = await db.rpc('operator_company_health', { target: accountId });
+  const d = (data ?? {}) as Record<string, unknown>;
+  const numbers = (d.numbers ?? []) as Record<string, unknown>[];
+  return {
+    messages24h: (d.messages_24h as number) ?? 0,
+    lastInboundAt: (d.last_inbound_at as string) ?? null,
+    lastOutboundAt: (d.last_outbound_at as string) ?? null,
+    inboundStale: d.inbound_stale === true,
+    mediaFailed7d: (d.media_failed_7d as number) ?? 0,
+    automationsFailed7d: (d.automations_failed_7d as number) ?? 0,
+    automationLastError: (d.automation_last_error as string) ?? null,
+    broadcastsWithFailures7d: (d.broadcasts_with_failures_7d as number) ?? 0,
+    numbers: numbers.map((n) => ({
+      id: n.id as string,
+      label: (n.label as string) ?? null,
+      instanceName: (n.instance_name as string) ?? null,
+      connectionState: (n.connection_state as string) ?? null,
+      status: (n.status as string) ?? null,
+      lastError: (n.last_error as string) ?? null,
+    })),
+  };
+}
