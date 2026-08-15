@@ -3,7 +3,8 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
-import type { CompanyBilling, Plan } from '@/lib/operator/billing';
+import type { CompanyBilling, Plan, UpgradeRequest } from '@/lib/operator/billing';
+import { CompanyUpgradeRequest } from '../../billing/upgrade-requests';
 import { formatMinor } from '@/lib/billing/money';
 import { BillingStatePill } from '../../billing/state-pill';
 
@@ -25,11 +26,13 @@ export function BillingPanel({
   billing,
   plans,
   defaultCurrency,
+  upgradeRequest,
 }: {
   slug: string;
   billing: CompanyBilling;
   plans: Plan[];
   defaultCurrency: string;
+  upgradeRequest?: UpgradeRequest | null;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -95,6 +98,10 @@ export function BillingPanel({
           </button>
         </div>
       </div>
+
+      {/* Directly above the plan controls, so answering the request and
+          closing it are the same visit. */}
+      <CompanyUpgradeRequest request={upgradeRequest ?? null} />
 
       <dl className="divide-border grid grid-cols-2 divide-x text-sm sm:grid-cols-4">
         <Field label="Plan" value={billing.planName ?? 'None'} />

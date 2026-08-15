@@ -420,6 +420,29 @@ export async function listUpgradeRequests(): Promise<UpgradeRequest[]> {
   }));
 }
 
+/** The open request for one company, if there is one. */
+export async function getOpenUpgradeRequest(
+  accountId: string
+): Promise<UpgradeRequest | null> {
+  const db = privilegedClient('operator');
+  const { data } = await db
+    .from('upgrade_requests')
+    .select('id, account_id, reason, requested_by_name, created_at')
+    .eq('account_id', accountId)
+    .eq('status', 'open')
+    .maybeSingle();
+  if (!data) return null;
+  return {
+    id: data.id as string,
+    accountId: data.account_id as string,
+    companyName: '',
+    companySlug: null,
+    reason: (data.reason as string) ?? null,
+    requestedByName: (data.requested_by_name as string) ?? null,
+    createdAt: data.created_at as string,
+  };
+}
+
 /** Close a request once it has been dealt with, either way. */
 export async function resolveUpgradeRequest(
   id: string,

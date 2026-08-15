@@ -3,10 +3,11 @@ import Link from 'next/link';
 
 import { getOperator, recordOperatorAction } from '@/lib/operator/session';
 import { listCompanies, withUsage } from '@/lib/operator/companies';
-import { billingOverview, listPlans } from '@/lib/operator/billing';
+import { billingOverview, listPlans, listUpgradeRequests } from '@/lib/operator/billing';
 import { formatMinor } from '@/lib/billing/money';
 import { planBreaches } from '@/lib/billing/limits';
 import { PlansPanel } from './plans-panel';
+import { UpgradeRequests } from './upgrade-requests';
 import {
   PageHeader,
   Metric,
@@ -36,10 +37,11 @@ export default async function OperatorBilling() {
   const ip = (await headers()).get('x-forwarded-for');
   await recordOperatorAction({ operator, action: 'billing.view', ip });
 
-  const [overview, rawCompanies, plans] = await Promise.all([
+  const [overview, rawCompanies, plans, upgrades] = await Promise.all([
     billingOverview(),
     listCompanies(),
     listPlans(true),
+    listUpgradeRequests(),
   ]);
   const companies = await withUsage(rawCompanies);
 
@@ -86,6 +88,10 @@ export default async function OperatorBilling() {
             tone={overview.unbilled > 0 ? 'warn' : 'default'}
           />
         </div>
+
+        {/* Above the plans: someone waiting to pay more outranks
+            everything else on this page. */}
+        <UpgradeRequests requests={upgrades} />
 
         <PlansPanel plans={plans} />
 

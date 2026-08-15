@@ -9,7 +9,11 @@ import {
   getCompanyUsage,
   type CompanyHealth,
 } from '@/lib/operator/companies';
-import { getCompanyBilling, listPlans } from '@/lib/operator/billing';
+import {
+  getCompanyBilling,
+  listPlans,
+  getOpenUpgradeRequest,
+} from '@/lib/operator/billing';
 import { privilegedClient } from '@/lib/supabase/privileged';
 import { planBreaches } from '@/lib/billing/limits';
 import { StatusControl } from './status-control';
@@ -53,7 +57,7 @@ export default async function OperatorCompany({
   const usage = company
     ? await getCompanyUsage(company.id)
     : { storageBytes: 0, broadcastSends30d: 0 };
-  const [billing, plans, defaultCurrency] = company
+  const [billing, plans, defaultCurrency, upgradeRequest] = company
     ? await Promise.all([
         getCompanyBilling(company.id),
         listPlans(true),
@@ -63,8 +67,9 @@ export default async function OperatorCompany({
           .eq('id', company.id)
           .maybeSingle()
           .then((r) => (r.data?.default_currency as string) ?? 'USD'),
+        getOpenUpgradeRequest(company.id),
       ])
-    : [null, [], 'USD'];
+    : [null, [], 'USD', null];
 
   const ip = (await headers()).get('x-forwarded-for');
   await recordOperatorAction({
@@ -186,6 +191,7 @@ export default async function OperatorCompany({
             billing={billing}
             plans={plans}
             defaultCurrency={defaultCurrency}
+            upgradeRequest={upgradeRequest}
           />
         )}
 
