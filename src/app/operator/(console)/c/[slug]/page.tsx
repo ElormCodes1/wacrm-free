@@ -8,7 +8,10 @@ import {
   getCompanyHealth,
   type CompanyHealth,
 } from '@/lib/operator/companies';
+import { getCompanyBilling, listPlans } from '@/lib/operator/billing';
+import { privilegedClient } from '@/lib/supabase/privileged';
 import { StatusControl } from './status-control';
+import { BillingPanel } from './billing-panel';
 import { NumberHealth } from './number-health';
 import {
   PageHeader,
@@ -45,6 +48,18 @@ export default async function OperatorCompany({
   // Health is the question support starts from, so it is fetched with the
   // company rather than behind another click.
   const health = company ? await getCompanyHealth(company.id) : null;
+  const [billing, plans, defaultCurrency] = company
+    ? await Promise.all([
+        getCompanyBilling(company.id),
+        listPlans(true),
+        privilegedClient('operator')
+          .from('accounts')
+          .select('default_currency')
+          .eq('id', company.id)
+          .maybeSingle()
+          .then((r) => (r.data?.default_currency as string) ?? 'USD'),
+      ])
+    : [null, [], 'USD'];
 
   const ip = (await headers()).get('x-forwarded-for');
   await recordOperatorAction({
@@ -129,6 +144,15 @@ export default async function OperatorCompany({
         </div>
 
         {health && <Problems health={health} />}
+
+        {billing && (
+          <BillingPanel
+            slug={company.slug ?? ''}
+            billing={billing}
+            plans={plans}
+            defaultCurrency={defaultCurrency}
+          />
+        )}
 
         <div className="grid gap-6 lg:grid-cols-2">
           <Card title="Members">

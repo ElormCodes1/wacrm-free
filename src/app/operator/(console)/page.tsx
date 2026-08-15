@@ -4,6 +4,8 @@ import { AlertTriangle, ArrowRight, Check } from 'lucide-react';
 
 import { getOperator, recordOperatorAction } from '@/lib/operator/session';
 import { listCompanies, platformOverview, listOperatorAudit } from '@/lib/operator/companies';
+import { billingOverview } from '@/lib/operator/billing';
+import { formatMinor } from '@/lib/billing/money';
 import {
   PageHeader,
   Metric,
@@ -35,10 +37,11 @@ export default async function OperatorOverview() {
   const ip = (await headers()).get('x-forwarded-for');
   await recordOperatorAction({ operator, action: 'operator.overview', ip });
 
-  const [overview, companies, audit] = await Promise.all([
+  const [overview, companies, audit, billing] = await Promise.all([
     platformOverview(),
     listCompanies(),
     listOperatorAudit(6),
+    billingOverview(),
   ]);
 
   // Only things that can be acted on, each pointing at the company it
@@ -55,6 +58,18 @@ export default async function OperatorOverview() {
           c.numbersDown === 1
             ? 'A WhatsApp number is not connected'
             : `${c.numbersDown} WhatsApp numbers are not connected`,
+      })),
+    ...companies
+      .filter((c) => c.billingState === 'overdue')
+      .map((c) => ({
+        key: `overdue-${c.id}`,
+        company: c.name,
+        slug: c.slug,
+        text:
+          `Payment overdue since ${c.periodEnd?.slice(0, 10) ?? 'an unknown date'}` +
+          (c.amountMinor !== null && c.currency
+            ? ` · ${formatMinor(c.amountMinor, c.currency)}`
+            : ''),
       })),
     ...companies
       .filter((c) => c.status === 'suspended')
@@ -87,7 +102,7 @@ export default async function OperatorOverview() {
       />
 
       <div className="space-y-6 p-8">
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
           <Metric
             label="Companies"
             value={overview.companiesTotal}
@@ -108,6 +123,25 @@ export default async function OperatorOverview() {
             label="Messages today"
             value={overview.messages24h}
             sub={`${overview.messages7d} in the last 7 days`}
+          />
+          <Metric
+            label="Monthly recurring"
+            value={
+              billing.mrr.length
+                ? formatMinor(billing.mrr[0].amountMinor, billing.mrr[0].currency)
+                : '—'
+            }
+            sub={
+              billing.mrr.length > 1
+                ? billing.mrr
+                    .slice(1)
+                    .map((m) => formatMinor(m.amountMinor, m.currency))
+                    .join(' · ')
+                : billing.overdue > 0
+                  ? `${billing.overdue} overdue`
+                  : 'nothing billed yet'
+            }
+            tone={billing.overdue > 0 ? 'warn' : 'default'}
           />
         </div>
 

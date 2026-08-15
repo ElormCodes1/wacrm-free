@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { privilegedClient } from '@/lib/supabase/privileged';
+import type { BillingState } from './billing';
 
 /**
  * Reading customer data from the operator plane.
@@ -34,6 +35,12 @@ export interface CompanySummary {
   contacts: number;
   conversations: number;
   lastActivityAt: string | null;
+  /** Billing, joined in by the same query — see migration 071. */
+  planName: string | null;
+  billingState: BillingState;
+  periodEnd: string | null;
+  amountMinor: number | null;
+  currency: string | null;
 }
 
 export interface CompanyMember {
@@ -84,6 +91,14 @@ export async function listCompanies(query?: string): Promise<CompanySummary[]> {
     contacts: Number(row.contacts ?? 0),
     conversations: Number(row.conversations ?? 0),
     lastActivityAt: (row.last_activity_at as string) ?? null,
+    planName: (row.plan_name as string) ?? null,
+    billingState: ((row.billing_state as BillingState) ?? 'unbilled') as BillingState,
+    periodEnd: (row.period_end as string) ?? null,
+    amountMinor:
+      row.amount_minor === null || row.amount_minor === undefined
+        ? null
+        : Number(row.amount_minor),
+    currency: (row.currency as string) ?? null,
   }));
 }
 
@@ -154,6 +169,13 @@ export async function getCompanyDetail(slug: string): Promise<CompanyDetail | nu
     contacts,
     conversations,
     lastActivityAt: (lastMessage.data?.last_message_at as string) ?? null,
+    // The detail page fetches billing separately (getCompanyBilling), so
+    // these stay null here rather than being fetched twice.
+    planName: null,
+    billingState: 'unbilled' as BillingState,
+    periodEnd: null,
+    amountMinor: null,
+    currency: null,
     membersList: members.map((m) => ({
       email: (m.email as string) ?? null,
       fullName: (m.full_name as string) ?? null,
