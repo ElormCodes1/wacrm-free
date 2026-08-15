@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 
 import { BrandLogo } from '@/components/layout/brand-logo';
+import { ModeToggle } from '@/components/layout/mode-toggle';
 
 /**
  * The public landing page.
@@ -99,10 +100,14 @@ export function LandingPage() {
             </a>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2">
+            {/* The same toggle the app uses, so the choice someone makes
+                here is the one they still have after signing in — it is
+                stored per device, not per page. */}
+            <ModeToggle />
             <Link
               href="/login"
-              className="text-muted-foreground hover:text-foreground rounded-md px-3 py-2 text-sm font-medium transition-colors"
+              className="text-muted-foreground hover:text-foreground hidden rounded-md px-3 py-2 text-sm font-medium transition-colors sm:block"
             >
               Sign in
             </Link>
