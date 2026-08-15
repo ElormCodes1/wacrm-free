@@ -15,6 +15,7 @@ import { FieldsAndTagsPanel } from '@/components/settings/fields-and-tags-panel'
 import { DealsSettings } from '@/components/settings/deals-settings';
 import { MembersTab } from '@/components/settings/members-tab';
 import { ApiKeysSettings } from '@/components/settings/api-keys-settings';
+import { PlanSettings } from '@/components/settings/plan-settings';
 import { AuditLogPanel } from '@/components/settings/audit-log-panel';
 import { canViewAuditLog, isAccountRole } from '@/lib/auth/roles';
 import {
@@ -75,6 +76,7 @@ export default function SettingsPage() {
     deals: <DealsSettings />,
     members: <MembersTab />,
     api: <ApiKeysSettings />,
+    plan: <PlanSettings />,
     audit: mayViewAudit ? (
       <AuditLogPanel />
     ) : (

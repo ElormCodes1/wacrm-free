@@ -3,6 +3,7 @@ import {
   FileText,
   KeyRound,
   ScrollText,
+  CreditCard,
   LayoutGrid,
   Palette,
   PlugZap,
@@ -32,6 +33,7 @@ export const SETTINGS_SECTIONS = [
   'deals',
   'members',
   'api',
+  'plan',
   'audit',
 ] as const;
 
@@ -60,6 +62,9 @@ export const SECTION_META: Record<SettingsSection, SectionMeta> = {
   deals: { id: 'deals', label: 'Deals & currency', icon: Coins, group: 'workspace' },
   members: { id: 'members', label: 'Team members', icon: UsersRound, group: 'workspace' },
   api: { id: 'api', label: 'API keys', icon: KeyRound, group: 'workspace' },
+  // Admin-only: it shows what the company pays, which is not every
+  // agent's business.
+  plan: { id: 'plan', label: 'Plan & usage', icon: CreditCard, group: 'workspace', adminOnly: true },
   audit: { id: 'audit', label: 'Audit log', icon: ScrollText, group: 'workspace', adminOnly: true },
 };
 
