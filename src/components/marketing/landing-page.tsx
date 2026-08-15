@@ -118,10 +118,13 @@ export function LandingPage() {
         <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5">
           <Link href="/" className="flex items-center gap-2.5">
             <BrandLogo className="h-8 w-8" />
-            <span className="text-lg font-semibold tracking-tight">WaCRM</span>
+            <span className="text-lg font-semibold tracking-tight whitespace-nowrap">WaCRM</span>
           </Link>
 
-          <div className="text-muted-foreground hidden items-center gap-8 text-sm md:flex">
+          {/* lg, not md: at exactly 768px these four links plus the logo and
+              the two buttons overlap — the wordmark and "Features" collide
+              and the buttons wrap onto two lines. */}
+          <div className="text-muted-foreground hidden items-center gap-6 text-sm whitespace-nowrap lg:flex">
             <a href="#features" className="hover:text-foreground transition-colors">
               Features
             </a>
@@ -149,13 +152,13 @@ export function LandingPage() {
             <ModeToggle />
             <Link
               href="/login"
-              className="text-muted-foreground hover:text-foreground hidden rounded-md px-3 py-2 text-sm font-medium transition-colors sm:block"
+              className="text-muted-foreground hover:text-foreground hidden rounded-md px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors sm:block"
             >
               Sign in
             </Link>
             <Link
               href="/signup"
-              className="bg-primary text-primary-foreground hover:bg-primary-hover rounded-md px-4 py-2 text-sm font-medium transition-colors"
+              className="bg-primary text-primary-foreground hover:bg-primary-hover rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors"
             >
               Get started
             </Link>
@@ -559,10 +562,15 @@ function InboxPreview() {
           </div>
 
           <div className="divide-border divide-y">
-            {THREADS.map((t) => (
+            {THREADS.map((t, i) => (
               <div
                 key={t.name}
-                className={`flex items-center gap-2.5 px-3 py-2.5 ${t.active ? 'bg-primary-soft' : ''}`}
+                // The tail of the list is dropped on a phone so the stacked
+                // thread below stays above the fold rather than being
+                // pushed off it.
+                className={`items-center gap-2.5 px-3 py-2.5 ${i >= 3 ? 'hidden sm:flex' : 'flex'} ${
+                  t.active ? 'bg-primary-soft' : ''
+                }`}
               >
                 <div
                   className={`${t.tint} flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white`}
@@ -586,8 +594,12 @@ function InboxPreview() {
           </div>
         </div>
 
-        {/* ---------- thread ---------- */}
-        <div className="hidden min-w-0 flex-col sm:flex">
+        {/* ---------- thread ----------
+            Shown on a phone too, stacked under the list. Hiding it below sm
+            left the mobile hero looking like a plain chat list, which is
+            the one impression this illustration exists to prevent — and a
+            phone is what most visitors arrive on. */}
+        <div className="border-border flex min-w-0 flex-col border-t sm:border-t-0">
           <div className="border-border flex items-center gap-2.5 border-b px-4 py-2.5">
             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#7C6BF2] text-[10px] font-semibold text-white">
               A
@@ -606,17 +618,21 @@ function InboxPreview() {
           </div>
 
           <div className="flex flex-1 flex-col justify-end gap-2 px-4 py-3">
-            <div className="flex justify-center">
+            {/* The opening exchange fills the taller desktop pane; on a
+                phone it would only push the interesting messages — the
+                voice note, the mention, the document — off the screen. */}
+            <div className="hidden justify-center sm:flex">
               <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-[9px]">
                 Today
               </span>
             </div>
 
-            <Bubble side="in">Good morning — do you still have the ceramic set?</Bubble>
-
-            <Bubble side="out" time="11:52">
-              Morning! Yes, in blue and cream.
-            </Bubble>
+            <div className="hidden sm:contents">
+              <Bubble side="in">Good morning — do you still have the ceramic set?</Bubble>
+              <Bubble side="out" time="11:52">
+                Morning! Yes, in blue and cream.
+              </Bubble>
+            </div>
 
             <Bubble side="in">Is the blue one still available?</Bubble>
 
