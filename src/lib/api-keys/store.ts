@@ -92,3 +92,31 @@ export function touchLastUsed(id: string): void {
       }
     });
 }
+
+/**
+ * Does this account's plan include the public API?
+ *
+ * Enforced rather than advisory, unlike the ceilings the operator console
+ * reports. The reason is that an API key keeps working forever once
+ * issued, so "we noticed you are using an API you are not paying for" is
+ * a conversation held while it continues to work — and the caller is a
+ * script, not a person who can be told.
+ *
+ * A company with no plan is allowed. Cutting off a customer nobody has
+ * priced yet would be a self-inflicted outage, and "not on a plan" is
+ * already reported separately in the console.
+ *
+ * Fails OPEN on an error. If the check itself breaks, a paying customer's
+ * integration must not stop; the failure mode of a billing lookup should
+ * never be an outage for someone who is entitled to the thing.
+ */
+export async function isApiAllowedForAccount(accountId: string): Promise<boolean> {
+  const { data, error } = await supabaseAdmin().rpc('account_api_allowed', {
+    target: accountId,
+  });
+  if (error) {
+    console.error('[api-keys/store] plan check failed, allowing:', error.message);
+    return true;
+  }
+  return data !== false;
+}

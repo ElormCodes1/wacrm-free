@@ -44,6 +44,11 @@ export interface CompanySummary {
   /** What the plan says it includes. Null = unlimited. Advisory only. */
   maxNumbers: number | null;
   maxMembers: number | null;
+  maxStorageMb: number | null;
+  maxBroadcastSends30d: number | null;
+  /** Filled in by withUsage(); zero until then. */
+  storageBytes: number;
+  broadcastSends30d: number;
 }
 
 export interface CompanyMember {
@@ -104,6 +109,16 @@ export async function listCompanies(query?: string): Promise<CompanySummary[]> {
     currency: (row.currency as string) ?? null,
     maxNumbers: row.max_numbers === null || row.max_numbers === undefined ? null : Number(row.max_numbers),
     maxMembers: row.max_members === null || row.max_members === undefined ? null : Number(row.max_members),
+    maxStorageMb:
+      row.max_storage_mb === null || row.max_storage_mb === undefined
+        ? null
+        : Number(row.max_storage_mb),
+    maxBroadcastSends30d:
+      row.max_broadcast_sends_30d === null || row.max_broadcast_sends_30d === undefined
+        ? null
+        : Number(row.max_broadcast_sends_30d),
+    storageBytes: 0,
+    broadcastSends30d: 0,
   }));
 }
 
@@ -183,6 +198,10 @@ export async function getCompanyDetail(slug: string): Promise<CompanyDetail | nu
     currency: null,
     maxNumbers: null,
     maxMembers: null,
+    maxStorageMb: null,
+    maxBroadcastSends30d: null,
+    storageBytes: 0,
+    broadcastSends30d: 0,
     membersList: members.map((m) => ({
       email: (m.email as string) ?? null,
       fullName: (m.full_name as string) ?? null,
@@ -197,6 +216,43 @@ export async function getCompanyDetail(slug: string): Promise<CompanyDetail | nu
       instanceName: (n.instance_name as string) ?? null,
       connectedAt: (n.connected_at as string) ?? null,
     })),
+  };
+}
+
+/**
+ * Fill in storage and broadcast volume for a list of companies.
+ *
+ * Separate from listCompanies because both figures are joins over
+ * messages and storage.objects — fine once per page, wrong to put in the
+ * query that every page runs.
+ */
+export async function withUsage(companies: CompanySummary[]): Promise<CompanySummary[]> {
+  const db = privilegedClient('operator');
+  const { data } = await db.rpc('operator_usage_all');
+  const usage = new Map<string, { storage: number; sends: number }>();
+  for (const row of (data ?? []) as Record<string, unknown>[]) {
+    usage.set(row.account_id as string, {
+      storage: Number(row.storage_bytes ?? 0),
+      sends: Number(row.broadcast_sends_30d ?? 0),
+    });
+  }
+  return companies.map((c) => ({
+    ...c,
+    storageBytes: usage.get(c.id)?.storage ?? 0,
+    broadcastSends30d: usage.get(c.id)?.sends ?? 0,
+  }));
+}
+
+/** Storage and broadcast volume for one company. */
+export async function getCompanyUsage(
+  accountId: string
+): Promise<{ storageBytes: number; broadcastSends30d: number }> {
+  const db = privilegedClient('operator');
+  const { data } = await db.rpc('operator_company_usage', { target: accountId });
+  const d = (data ?? {}) as Record<string, unknown>;
+  return {
+    storageBytes: Number(d.storage_bytes ?? 0),
+    broadcastSends30d: Number(d.broadcast_sends_30d ?? 0),
   };
 }
 

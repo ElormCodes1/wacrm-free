@@ -6,6 +6,7 @@ import { getOperator, recordOperatorAction } from '@/lib/operator/session';
 import {
   getCompanyDetail,
   getCompanyHealth,
+  getCompanyUsage,
   type CompanyHealth,
 } from '@/lib/operator/companies';
 import { getCompanyBilling, listPlans } from '@/lib/operator/billing';
@@ -49,6 +50,9 @@ export default async function OperatorCompany({
   // Health is the question support starts from, so it is fetched with the
   // company rather than behind another click.
   const health = company ? await getCompanyHealth(company.id) : null;
+  const usage = company
+    ? await getCompanyUsage(company.id)
+    : { storageBytes: 0, broadcastSends30d: 0 };
   const [billing, plans, defaultCurrency] = company
     ? await Promise.all([
         getCompanyBilling(company.id),
@@ -128,7 +132,7 @@ export default async function OperatorCompany({
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
           <Metric label="Members" value={company.members} />
           <Metric
             label="Numbers"
@@ -142,6 +146,21 @@ export default async function OperatorCompany({
             value={health?.messages24h ?? 0}
             sub="last 24 hours"
           />
+          <Metric
+            label="Media stored"
+            value={`${Math.round(usage.storageBytes / (1024 * 1024))} MB`}
+            sub={
+              billing?.maxStorageMb != null
+                ? `of ${billing.maxStorageMb} MB included`
+                : 'no limit on this plan'
+            }
+            tone={
+              billing?.maxStorageMb != null &&
+              usage.storageBytes > billing.maxStorageMb * 1024 * 1024
+                ? 'warn'
+                : 'default'
+            }
+          />
         </div>
 
         {health && (
@@ -150,8 +169,12 @@ export default async function OperatorCompany({
             overPlan={planBreaches({
               numbers: company.numbers,
               members: company.members,
+              storageBytes: usage.storageBytes,
+              broadcastSends30d: usage.broadcastSends30d,
               maxNumbers: billing?.maxNumbers ?? null,
               maxMembers: billing?.maxMembers ?? null,
+              maxStorageMb: billing?.maxStorageMb ?? null,
+              maxBroadcastSends30d: billing?.maxBroadcastSends30d ?? null,
               planName: billing?.planName ?? null,
             })}
           />

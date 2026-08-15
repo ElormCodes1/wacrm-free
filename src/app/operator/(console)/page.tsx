@@ -3,7 +3,12 @@ import Link from 'next/link';
 import { AlertTriangle, ArrowRight, Check } from 'lucide-react';
 
 import { getOperator, recordOperatorAction } from '@/lib/operator/session';
-import { listCompanies, platformOverview, listOperatorAudit } from '@/lib/operator/companies';
+import {
+  listCompanies,
+  withUsage,
+  platformOverview,
+  listOperatorAudit,
+} from '@/lib/operator/companies';
 import { billingOverview } from '@/lib/operator/billing';
 import { formatMinor } from '@/lib/billing/money';
 import { planBreaches } from '@/lib/billing/limits';
@@ -38,12 +43,13 @@ export default async function OperatorOverview() {
   const ip = (await headers()).get('x-forwarded-for');
   await recordOperatorAction({ operator, action: 'operator.overview', ip });
 
-  const [overview, companies, audit, billing] = await Promise.all([
+  const [overview, rawCompanies, audit, billing] = await Promise.all([
     platformOverview(),
     listCompanies(),
     listOperatorAudit(6),
     billingOverview(),
   ]);
+  const companies = await withUsage(rawCompanies);
 
   // Only things that can be acted on, each pointing at the company it
   // concerns. A dashboard that reports problems without saying where they
@@ -79,8 +85,12 @@ export default async function OperatorOverview() {
       planBreaches({
         numbers: c.numbers,
         members: c.members,
+        storageBytes: c.storageBytes,
+        broadcastSends30d: c.broadcastSends30d,
         maxNumbers: c.maxNumbers,
         maxMembers: c.maxMembers,
+        maxStorageMb: c.maxStorageMb,
+        maxBroadcastSends30d: c.maxBroadcastSends30d,
         planName: c.planName,
       }).map((b) => ({
         key: `limit-${c.id}-${b.kind}`,

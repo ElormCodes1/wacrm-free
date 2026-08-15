@@ -14,14 +14,20 @@
 export interface PlanUsage {
   numbers: number;
   members: number;
+  /** Media stored, in bytes. Your bill, not theirs. */
+  storageBytes?: number;
+  /** Broadcast messages actually sent in the last 30 days. */
+  broadcastSends30d?: number;
   maxNumbers: number | null;
   maxMembers: number | null;
+  maxStorageMb?: number | null;
+  maxBroadcastSends30d?: number | null;
   /** Null when the company is not on a plan at all — nothing to compare. */
   planName: string | null;
 }
 
 export interface LimitBreach {
-  kind: 'numbers' | 'members';
+  kind: 'numbers' | 'members' | 'storage' | 'broadcasts';
   used: number;
   allowed: number;
   /** Ready to show: "4 numbers on a plan that includes 1". */
@@ -50,6 +56,33 @@ export function planBreaches(usage: PlanUsage): LimitBreach[] {
       used: usage.members,
       allowed: usage.maxMembers,
       text: `${usage.members} team ${usage.members === 1 ? 'member' : 'members'} on a plan that includes ${usage.maxMembers}`,
+    });
+  }
+
+  if (
+    usage.maxStorageMb != null &&
+    usage.storageBytes != null &&
+    usage.storageBytes > usage.maxStorageMb * 1024 * 1024
+  ) {
+    const usedMb = Math.round(usage.storageBytes / (1024 * 1024));
+    out.push({
+      kind: 'storage',
+      used: usedMb,
+      allowed: usage.maxStorageMb,
+      text: `${usedMb} MB of media stored on a plan that includes ${usage.maxStorageMb} MB`,
+    });
+  }
+
+  if (
+    usage.maxBroadcastSends30d != null &&
+    usage.broadcastSends30d != null &&
+    usage.broadcastSends30d > usage.maxBroadcastSends30d
+  ) {
+    out.push({
+      kind: 'broadcasts',
+      used: usage.broadcastSends30d,
+      allowed: usage.maxBroadcastSends30d,
+      text: `${usage.broadcastSends30d.toLocaleString()} broadcast messages in 30 days on a plan that includes ${usage.maxBroadcastSends30d.toLocaleString()}`,
     });
   }
 

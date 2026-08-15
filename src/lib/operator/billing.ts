@@ -84,6 +84,9 @@ export interface CompanyBilling {
   notes: string | null;
   maxNumbers: number | null;
   maxMembers: number | null;
+  maxStorageMb: number | null;
+  maxBroadcastSends30d: number | null;
+  allowApi: boolean;
   payments: Payment[];
   paidTotal: MoneyByCurrency[];
 }
@@ -171,6 +174,15 @@ export async function getCompanyBilling(accountId: string): Promise<CompanyBilli
       b?.max_numbers === undefined || b?.max_numbers === null ? null : Number(b.max_numbers),
     maxMembers:
       b?.max_members === undefined || b?.max_members === null ? null : Number(b.max_members),
+    maxStorageMb:
+      b?.max_storage_mb === undefined || b?.max_storage_mb === null
+        ? null
+        : Number(b.max_storage_mb),
+    maxBroadcastSends30d:
+      b?.max_broadcast_sends_30d === undefined || b?.max_broadcast_sends_30d === null
+        ? null
+        : Number(b.max_broadcast_sends_30d),
+    allowApi: b?.allow_api !== false,
     payments: ((d.payments ?? []) as Record<string, unknown>[]).map((p) => ({
       id: p.id as string,
       amountMinor: Number(p.amount_minor ?? 0),

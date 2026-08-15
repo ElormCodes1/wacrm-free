@@ -30,7 +30,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { supabaseAdmin } from '@/lib/flows/admin-client';
-import { findActiveKeyByHash, touchLastUsed } from '@/lib/api-keys/store';
+import {
+  findActiveKeyByHash,
+  touchLastUsed,
+  isApiAllowedForAccount,
+} from '@/lib/api-keys/store';
 import { hashApiKey, looksLikeApiKey } from '@/lib/api-keys/keys';
 import { hasScope, type ApiScope } from '@/lib/api-keys/scopes';
 import { forbidden, rateLimited, unauthorized } from '@/lib/api/v1/respond';
@@ -103,6 +107,18 @@ export async function requireApiKey(
 
   if (scope && !hasScope(row.scopes, scope)) {
     throw forbidden(`This API key is missing the '${scope}' scope`);
+  }
+
+  // Checked after the key is known valid, so an unknown key still 401s
+  // rather than letting a prober learn which accounts have API access.
+  //
+  // Unlike the ceilings the operator console reports, this one actually
+  // stops the request: a key keeps working forever once issued, so
+  // "we noticed you're using an API you don't pay for" is a conversation
+  // held while it continues to work — and the caller is a script that
+  // cannot be told.
+  if (!(await isApiAllowedForAccount(row.account_id))) {
+    throw forbidden('The public API is not included in this plan. Contact support to upgrade.');
   }
 
   touchLastUsed(row.id);

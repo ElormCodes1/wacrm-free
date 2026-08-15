@@ -2,7 +2,7 @@ import { headers } from 'next/headers';
 import Link from 'next/link';
 
 import { getOperator, recordOperatorAction } from '@/lib/operator/session';
-import { listCompanies } from '@/lib/operator/companies';
+import { listCompanies, withUsage } from '@/lib/operator/companies';
 import { billingOverview, listPlans } from '@/lib/operator/billing';
 import { formatMinor } from '@/lib/billing/money';
 import { planBreaches } from '@/lib/billing/limits';
@@ -36,11 +36,12 @@ export default async function OperatorBilling() {
   const ip = (await headers()).get('x-forwarded-for');
   await recordOperatorAction({ operator, action: 'billing.view', ip });
 
-  const [overview, companies, plans] = await Promise.all([
+  const [overview, rawCompanies, plans] = await Promise.all([
     billingOverview(),
     listCompanies(),
     listPlans(true),
   ]);
+  const companies = await withUsage(rawCompanies);
 
   // Overdue first, then due soon, then everyone else — the list is a work
   // queue, not an alphabetical directory.
@@ -98,6 +99,7 @@ export default async function OperatorBilling() {
                 <TH>Plan</TH>
                 <TH align="right">Amount</TH>
                 <TH align="right">Numbers</TH>
+                <TH align="right">Storage</TH>
                 <TH>Renews</TH>
                 <TH>Billing</TH>
                 <TH>Account</TH>
@@ -143,6 +145,25 @@ export default async function OperatorBilling() {
                           >
                             {c.numbers}
                             {c.planName ? ` / ${ceiling}` : ''}
+                          </span>
+                        );
+                      })()}
+                    </TD>
+                    <TD align="right">
+                      {(() => {
+                        const mb = Math.round(c.storageBytes / (1024 * 1024));
+                        const over = c.maxStorageMb !== null && mb > c.maxStorageMb;
+                        return (
+                          <span
+                            className={
+                              over
+                                ? 'font-medium text-amber-600 dark:text-amber-400'
+                                : 'text-muted-foreground'
+                            }
+                            title={over ? 'Over the storage this plan includes' : undefined}
+                          >
+                            {mb} MB
+                            {c.planName && c.maxStorageMb !== null ? ` / ${c.maxStorageMb}` : ''}
                           </span>
                         );
                       })()}

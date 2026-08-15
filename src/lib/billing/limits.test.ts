@@ -45,6 +45,38 @@ describe('planBreaches', () => {
     expect(planBreaches({ ...base, members: 5, maxMembers: 5 })).toEqual([]);
   });
 
+  it('reports storage over the plan, in MB', () => {
+    const [b] = planBreaches({
+      ...base,
+      storageBytes: 600 * 1024 * 1024,
+      maxStorageMb: 500,
+    });
+    expect(b.kind).toBe('storage');
+    expect(b.text).toBe('600 MB of media stored on a plan that includes 500 MB');
+  });
+
+  it('does not flag storage under the ceiling', () => {
+    expect(
+      planBreaches({ ...base, storageBytes: 400 * 1024 * 1024, maxStorageMb: 500 })
+    ).toEqual([]);
+  });
+
+  it('reports broadcast volume over the plan', () => {
+    const [b] = planBreaches({
+      ...base,
+      broadcastSends30d: 7500,
+      maxBroadcastSends30d: 5000,
+    });
+    expect(b.kind).toBe('broadcasts');
+    expect(b.text).toContain('7,500 broadcast messages in 30 days');
+  });
+
+  it('ignores usage it has not been given', () => {
+    // The list pages fill usage in separately; a page that has not done
+    // so must not report every customer as being at 0 MB over the limit.
+    expect(planBreaches({ ...base, maxStorageMb: 500, maxBroadcastSends30d: 100 })).toEqual([]);
+  });
+
   it('uses singular wording for one', () => {
     const [breach] = planBreaches({ ...base, numbers: 2, maxNumbers: 1 });
     expect(breach.text).toContain('2 WhatsApp numbers');
