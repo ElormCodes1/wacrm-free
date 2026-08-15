@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -69,7 +69,6 @@ function LoginPageInner({ branding }: { branding: Branding | null }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
   const supabase = createClient();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -88,8 +87,21 @@ function LoginPageInner({ branding }: { branding: Branding | null }) {
       return;
     }
 
+    // HARD navigations from here, not router.push.
+    //
+    // Signing in changes what the server renders for every route, but the
+    // App Router keeps a client-side cache of trees it has already
+    // fetched — including ones built while nobody was signed in. A soft
+    // navigation can therefore land on a page rendered for a logged-out
+    // visitor and bounce straight back to /login, which looks exactly like
+    // "the session did not stick".
+    //
+    // It only shows up once deployed: that cache is effectively disabled
+    // in dev and real in a production build. Every sign-OUT path in this
+    // app already forces a full load for the same reason; sign-in was the
+    // one that did not.
     if (inviteToken) {
-      router.push(`/join/${encodeURIComponent(inviteToken)}`);
+      window.location.assign(`/join/${encodeURIComponent(inviteToken)}`);
     } else {
       // Where to land is resolved from the account, not from the hint in
       // the address: the hint decides branding only, and trusting it here
@@ -105,10 +117,15 @@ function LoginPageInner({ branding }: { branding: Branding | null }) {
       const slug = (account as { slug?: string } | undefined)?.slug;
       if (slug) {
         // Remember for next time this device sees an expired session.
-        document.cookie = `${LAST_COMPANY_COOKIE}=${encodeURIComponent(slug)}; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`;
-        router.push(companyPath(slug, "dashboard"));
+        document.cookie =
+          `${LAST_COMPANY_COOKIE}=${encodeURIComponent(slug)}; path=/; ` +
+          `max-age=${60 * 60 * 24 * 365}; samesite=lax` +
+          // Only over TLS. The value is a company slug rather than a
+          // secret, but there is no reason to let it travel in clear.
+          (window.location.protocol === "https:" ? "; secure" : "");
+        window.location.assign(companyPath(slug, "dashboard"));
       } else {
-        router.push("/");
+        window.location.assign("/");
       }
     }
   };
