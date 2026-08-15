@@ -1,6 +1,12 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+/**
+ * First path segments the app serves itself. Anything else in that
+ * position is a company address.
+ */
+const TOP_LEVEL_ROUTES = new Set(['api', 'join', 'login', 'signup', 'forgot-password'])
+
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
 
@@ -70,29 +76,29 @@ export async function middleware(request: NextRequest) {
   }
 
   // Protected pages - redirect to login if not authenticated.
-  // Must list EVERY authenticated (dashboard) route: an omission means an
-  // unauthenticated visitor reaches the page instead of being bounced to
-  // login (RLS still blocks their data, but the page shouldn't render).
-  const protectedPaths = [
-    '/dashboard',
-    '/inbox',
-    '/contacts',
-    '/pipelines',
-    '/broadcasts',
-    '/automations',
-    '/settings',
-    '/tasks',
-    '/status',
-    '/store',
-    '/notifications',
-    '/agents',
-    '/channels',
-    '/communities',
-    '/flows',
-  ]
-  if (!user && protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))) {
+  //
+  // Previously a hand-kept list of page names, with a comment admitting
+  // that an omission lets an unauthenticated visitor render the page. That
+  // list also went silently dead the moment every route moved under
+  // /{company}/..., because it matched on a leading "/inbox" that no
+  // longer exists — the failure it warned about, arriving by a route
+  // nobody predicted.
+  //
+  // The rule is now structural: anything with a company segment in front
+  // of it is the authenticated app, EXCEPT the front door and the branded
+  // sign-in, which exist precisely to be readable without a session. New
+  // pages are covered the day they are added, without anyone updating
+  // anything.
+  const segments = request.nextUrl.pathname.split('/').filter(Boolean)
+  const looksLikeCompanyPage =
+    segments.length >= 2 &&
+    !TOP_LEVEL_ROUTES.has(segments[0]) &&
+    segments[1] !== 'login'
+
+  if (!user && looksLikeCompanyPage) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
+    url.searchParams.set('company', segments[0])
     return withRefreshedCookies(NextResponse.redirect(url))
   }
 

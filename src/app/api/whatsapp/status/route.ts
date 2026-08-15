@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { sendStatus } from '@/lib/whatsapp/provider/evolution'
 import { instanceForConversation } from '@/lib/whatsapp/resolve-send-target'
+import { privilegedClient } from '@/lib/supabase/privileged';
 
 const STATUS_TTL_MS = 24 * 60 * 60 * 1000
 
@@ -78,10 +78,7 @@ export async function POST(request: Request) {
     // Record "My status" immediately (webhook echo would arrive later and
     // is deduped by the UNIQUE(account_id, message_id) upsert).
     if (messageId) {
-      const admin = createAdminClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      )
+      const admin = privilegedClient('background-engine')
       const now = new Date()
       await admin.from('status_updates').upsert(
         {

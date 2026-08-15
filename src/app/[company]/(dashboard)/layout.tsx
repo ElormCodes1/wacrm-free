@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
+
 import { DashboardShell } from "./dashboard-shell";
+import { getCompany } from "@/lib/tenancy/company";
 
 // Every dashboard route is authenticated and per-user (it renders the
 // caller's own data, scoped by their cookie session), so none of it may be
@@ -27,10 +30,28 @@ export const metadata: Metadata = {
   },
 };
 
-export default function DashboardLayout({
+/**
+ * Requires a session.
+ *
+ * This gate lives here rather than in the company layout above, because
+ * that one also wraps the front door and the branded sign-in — pages whose
+ * whole purpose is to work without a session. Everything in THIS group is
+ * the authenticated app, so the requirement applies to the group rather
+ * than to a hand-kept list of page names, which is the shape that lets one
+ * new page through unnoticed.
+ */
+export default async function DashboardLayout({
   children,
+  params,
 }: {
   children: React.ReactNode;
+  params: Promise<{ company: string }>;
 }) {
+  const { company } = await params;
+  const result = await getCompany();
+  if (!result.ok) {
+    // Back to this company's own branded sign-in, not a generic one.
+    redirect(`/login?company=${encodeURIComponent(company)}`);
+  }
   return <DashboardShell>{children}</DashboardShell>;
 }

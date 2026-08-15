@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { createClient as createAdminClient } from '@supabase/supabase-js'
 import {
   fetchGroupDetail,
   updateGroupSubject,
@@ -13,12 +12,10 @@ import {
 } from '@/lib/whatsapp/provider/evolution'
 import { instanceForGroup, groupJidFromId } from '@/lib/whatsapp/resolve-group'
 import { storeAvatarFromUrl } from '@/lib/whatsapp/avatar'
+import { privilegedClient } from '@/lib/supabase/privileged';
 
 function admin() {
-  return createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  )
+  return privilegedClient('background-engine')
 }
 
 const SETTINGS: GroupSettingAction[] = [

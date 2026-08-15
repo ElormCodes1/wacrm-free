@@ -30,8 +30,8 @@
 
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { findMessagesPage } from '@/lib/whatsapp/provider/evolution'
+import { privilegedClient } from '@/lib/supabase/privileged';
 
 /** Pages of 50, newest first. Four covers a couple of hours on a busy line. */
 const DEFAULT_PAGES = 4
@@ -127,10 +127,7 @@ async function handle(request: Request) {
     let db: any
 
     if (isCron) {
-      db = createAdminClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      )
+      db = privilegedClient('system-maintenance')
       const { data } = await db.from('whatsapp_config').select('id, label, instance_name')
       rows = data ?? []
     } else {

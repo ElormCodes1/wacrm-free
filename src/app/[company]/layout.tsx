@@ -40,16 +40,17 @@ export default async function CompanyLayout({
   if (!result.ok) {
     const { failure } = result;
 
-    // Not signed in: show whose system this is, then let them in. The
-    // branding is public precisely so a person at a door at 6am can tell
-    // before authenticating.
+    // Not signed in: this layout does NOT bounce to sign-in. The front
+    // door and the branded sign-in page live under here and have to render
+    // without a session — that is the whole point of a printable address.
+    // Requiring a session is the dashboard group's job, one level down.
     if (failure.reason === 'unauthenticated') {
       const branding = await companyBrandingBySlug(urlSlug);
       if (!branding) return <CompanyUnavailable kind="unknown" slug={urlSlug} />;
       if (branding.status === 'suspended') {
         return <CompanyUnavailable kind="suspended" slug={urlSlug} name={branding.name} />;
       }
-      redirect(`/login?company=${encodeURIComponent(urlSlug)}`);
+      return <CompanySlugProvider slug={urlSlug}>{children}</CompanySlugProvider>;
     }
 
     if (failure.reason === 'suspended') {

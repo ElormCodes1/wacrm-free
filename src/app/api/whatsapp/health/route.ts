@@ -19,12 +19,12 @@
 
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { createClient as createAdminClient } from '@supabase/supabase-js'
 import {
   isInstanceAlive,
   clearAliveCache,
   restartInstance,
 } from '@/lib/whatsapp/provider/evolution'
+import { privilegedClient } from '@/lib/supabase/privileged';
 
 /** Give the socket a moment to come up before re-probing after a restart. */
 const RESTART_SETTLE_MS = 4000
@@ -106,10 +106,7 @@ async function handle(request: Request) {
 
     if (isCron) {
       // Service role: a cron has no session, and this sweeps every account.
-      const admin = createAdminClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      )
+      const admin = privilegedClient('system-maintenance')
       const { data: rows } = await admin
         .from('whatsapp_config')
         .select('id, label, instance_name')

@@ -1,18 +1,15 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { createClient as createAdminClient } from '@supabase/supabase-js'
 import {
   createGroup,
   fetchAllGroups,
   fetchGroupInfo,
 } from '@/lib/whatsapp/provider/evolution'
 import { instanceForConversation } from '@/lib/whatsapp/resolve-send-target'
+import { privilegedClient } from '@/lib/supabase/privileged';
 
 function admin() {
-  return createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  )
+  return privilegedClient('background-engine')
 }
 
 /**

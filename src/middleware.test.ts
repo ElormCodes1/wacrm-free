@@ -71,18 +71,21 @@ describe("middleware — refreshed auth cookies survive redirects", () => {
     expect(res.cookies.get(ROTATED.name)?.value).toBe(ROTATED.value);
   });
 
-  it("carries the rotated token when redirecting an unauth user to /login", async () => {
+  it("carries the rotated token when redirecting an unauth user to their company's sign-in", async () => {
     mockUser = null;
     // Even on the logged-out path getUser() may emit cookie writes (e.g.
     // clearing a dead session); those must not be dropped on the redirect.
     refreshedCookies = [{ ...ROTATED, value: "cleared" }];
 
     const res = await middleware(
-      new NextRequest("https://app.test/dashboard"),
+      // A company page: pages live at /{company}/... now, and the
+      // redirect carries the company so the sign-in is branded.
+      new NextRequest("https://app.test/acme/dashboard"),
     );
 
     expect(res.status).toBe(307);
     expect(res.headers.get("location")).toContain("/login");
+    expect(res.headers.get("location")).toContain("company=acme");
     expect(res.cookies.get(ROTATED.name)?.value).toBe("cleared");
   });
 
@@ -103,7 +106,9 @@ describe("middleware — refreshed auth cookies survive redirects", () => {
     refreshedCookies = [ROTATED];
 
     const res = await middleware(
-      new NextRequest("https://app.test/dashboard"),
+      // A company page: pages live at /{company}/... now, and the
+      // redirect carries the company so the sign-in is branded.
+      new NextRequest("https://app.test/acme/dashboard"),
     );
 
     // No redirect — the normal NextResponse.next() already carries cookies.

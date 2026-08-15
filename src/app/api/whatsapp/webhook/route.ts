@@ -33,6 +33,7 @@ import {
   syncContactProfile,
   storeAvatarFromUrl,
 } from '@/lib/whatsapp/avatar'
+import { privilegedClient } from '@/lib/supabase/privileged';
 
 // The `after()` callback runs within this route's max duration. Inbound
 // processing can fan out to per-media downloads + storage uploads, so give
@@ -44,10 +45,7 @@ export const maxDuration = 60
 let _adminClient: any = null
 function supabaseAdmin() {
   if (!_adminClient) {
-    _adminClient = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    )
+    _adminClient = privilegedClient('inbound-webhook')
   }
   return _adminClient
 }

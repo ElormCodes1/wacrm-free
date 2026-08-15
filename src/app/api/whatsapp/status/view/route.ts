@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { getDefaultInstanceName } from '@/lib/whatsapp/resolve-send-target'
 import { markMessagesAsRead } from '@/lib/whatsapp/provider/evolution'
+import { privilegedClient } from '@/lib/supabase/privileged';
 
 /**
  * POST /api/whatsapp/status/view  { ids: string[] }
@@ -34,10 +34,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'ids required' }, { status: 400 })
   }
 
-  const admin = createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  )
+  const admin = privilegedClient('background-engine')
 
   const { data: updated, error } = await admin
     .from('status_updates')

@@ -42,8 +42,10 @@ vi.mock('next/server', async (importOriginal) => {
   };
 });
 
-vi.mock('@supabase/supabase-js', () => ({
-  createClient: () => db.client,
+// The route obtains its RLS-bypassing client through the single
+// privileged door now, so that is what the harness stands in for.
+vi.mock('@/lib/supabase/privileged', () => ({
+  privilegedClient: () => db.client,
 }));
 
 vi.mock('@/lib/whatsapp/provider/config', async (importOriginal) => {

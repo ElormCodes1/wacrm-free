@@ -80,6 +80,33 @@ const eslintConfig = defineConfig([
       ],
     },
   },
+
+  // ============================================================
+  // RLS bypass containment
+  //
+  // Ordinary code talks to Supabase as the signed-in user, so RLS decides
+  // visibility and a query that forgets to filter by company returns
+  // nothing rather than someone else's rows. The service-role key removes
+  // that guarantee entirely, so reading it is confined to one module whose
+  // name says what it is. Anywhere else it is a lint error — the wrong
+  // thing becomes inconvenient to express rather than something to
+  // remember in review.
+  // ============================================================
+  {
+    files: ["src/**/*.ts", "src/**/*.tsx"],
+    ignores: ["src/lib/supabase/privileged.ts", "**/*.test.ts", "**/*.test.tsx"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "MemberExpression[object.object.name='process'][object.property.name='env'][property.name='SUPABASE_SERVICE_ROLE_KEY']",
+          message:
+            "The service-role key bypasses row-level security. Obtain a bypassing client from privilegedClient(reason) in @/lib/supabase/privileged, which records why — do not read the key directly.",
+        },
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;
