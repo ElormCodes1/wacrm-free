@@ -52,3 +52,34 @@ describe('emailLinkOrigin', () => {
     expect(emailLinkOrigin(undefined)).toBe('');
   });
 });
+
+describe('originForRedirect', () => {
+  // Imported lazily so the module-level env read stays out of the way.
+  async function subject() {
+    const { originForRedirect } = await import('./app-url');
+    return originForRedirect;
+  }
+
+  it('prefers the proxy’s forwarded host over the internal one', async () => {
+    const fn = await subject();
+    const req = new Request('http://0.0.0.0:3000/auth/callback', {
+      headers: { 'x-forwarded-host': 'wacrm.ceess.net', 'x-forwarded-proto': 'https' },
+    });
+    expect(fn(req)).toBe('https://wacrm.ceess.net');
+  });
+
+  it('falls back to Host when there is no forwarded header', async () => {
+    const fn = await subject();
+    const req = new Request('http://0.0.0.0:3000/auth/callback', {
+      headers: { host: 'wacrm.ceess.net' },
+    });
+    expect(fn(req)).toBe('https://wacrm.ceess.net');
+  });
+
+  it('never hands back the bind address', async () => {
+    // The whole point: a Location header pointing at 0.0.0.0 is a dead end.
+    const fn = await subject();
+    const req = new Request('http://0.0.0.0:3000/auth/callback');
+    expect(fn(req)).not.toContain('0.0.0.0');
+  });
+});

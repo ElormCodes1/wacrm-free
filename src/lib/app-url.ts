@@ -74,3 +74,29 @@ export function emailLinkOrigin(serverOrigin?: string | null): string {
   }
   return '';
 }
+
+/**
+ * The origin to build redirects from, inside a route handler.
+ *
+ * `new URL(request.url).origin` is the obvious choice and it is wrong
+ * behind a proxy: the container binds 0.0.0.0:3000, so that is what the
+ * request URL says, and a Location header pointing at 0.0.0.0 sends the
+ * visitor nowhere. It fails in exactly one environment — the deployed one
+ * — which is the worst place to find out.
+ *
+ * Configured value first, then the forwarded headers the proxy sets to
+ * tell us what the visitor actually asked for, then the request itself as
+ * a last resort.
+ */
+export function originForRedirect(request: Request): string {
+  const configured = configuredOrigin();
+  if (configured) return configured;
+
+  const headers = request.headers;
+  const host = headers.get('x-forwarded-host') ?? headers.get('host');
+  const proto = headers.get('x-forwarded-proto') ?? 'https';
+  const fromHeaders = normaliseOrigin(host ? `${proto}://${host}` : null);
+  if (fromHeaders) return fromHeaders;
+
+  return normaliseOrigin(new URL(request.url).origin) ?? new URL(request.url).origin;
+}

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { createClient } from '@/lib/supabase/server';
+import { originForRedirect } from '@/lib/app-url';
 
 /**
  * Where an emailed link comes back to.
@@ -27,6 +28,9 @@ import { createClient } from '@/lib/supabase/server';
  */
 export async function GET(request: Request) {
   const url = new URL(request.url);
+  // NOT url.origin: behind the proxy that is the container's bind address
+  // (0.0.0.0:3000), and a Location header pointing there goes nowhere.
+  const origin = originForRedirect(request);
   const code = url.searchParams.get('code');
   const next = url.searchParams.get('next');
 
@@ -35,7 +39,7 @@ export async function GET(request: Request) {
   const errorDescription = url.searchParams.get('error_description');
   if (errorDescription) {
     return NextResponse.redirect(
-      new URL(`/login?error=${encodeURIComponent(errorDescription)}`, url.origin)
+      new URL(`/login?error=${encodeURIComponent(errorDescription)}`, origin)
     );
   }
 
@@ -43,7 +47,7 @@ export async function GET(request: Request) {
     // Either an implicit-flow link (token in the fragment) or someone
     // wandering in. /auth/complete decides, in the browser, where the
     // fragment can actually be read.
-    const target = new URL('/auth/complete', url.origin);
+    const target = new URL('/auth/complete', origin);
     if (next) target.searchParams.set('next', next);
     return NextResponse.redirect(target);
   }
@@ -64,7 +68,7 @@ export async function GET(request: Request) {
   // specific page. Only relative paths: an absolute one would let a
   // crafted link bounce someone off our domain carrying a live session.
   if (next && next.startsWith('/') && !next.startsWith('//')) {
-    return NextResponse.redirect(new URL(next, url.origin));
+    return NextResponse.redirect(new URL(next, origin));
   }
 
   // A recovery link ends at the password form, whatever else is true:
@@ -72,7 +76,7 @@ export async function GET(request: Request) {
   // password, and dropping them on the dashboard instead leaves them
   // signed in with the password they had forgotten.
   if (url.searchParams.get('type') === 'recovery') {
-    return NextResponse.redirect(new URL('/reset-password', url.origin));
+    return NextResponse.redirect(new URL('/reset-password', origin));
   }
 
   // Otherwise, their own workspace. Resolved from the session that was
@@ -86,5 +90,5 @@ export async function GET(request: Request) {
   const account = Array.isArray(profile?.account) ? profile?.account[0] : profile?.account;
   const slug = (account as { slug?: string } | undefined)?.slug;
 
-  return NextResponse.redirect(new URL(slug ? `/${slug}/dashboard` : '/', url.origin));
+  return NextResponse.redirect(new URL(slug ? `/${slug}/dashboard` : '/', origin));
 }
