@@ -59,7 +59,7 @@ export async function GET(request: Request) {
     return NextResponse.redirect(
       new URL(
         `/login?error=${encodeURIComponent(error?.message ?? 'That link is no longer valid')}`,
-        url.origin
+        origin
       )
     );
   }
