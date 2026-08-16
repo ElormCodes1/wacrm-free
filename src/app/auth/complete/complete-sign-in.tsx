@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 
 import { createClient } from '@/lib/supabase/client';
 import { BrandLogo } from '@/components/layout/brand-logo';
@@ -48,6 +49,16 @@ export function CompleteSignIn() {
         return;
       }
 
+      // A recovery link exists to change a password, so it must end at the
+      // form and not at the dashboard. Supabase says which kind of link it
+      // was in the fragment — which matters because it ignores our
+      // requested redirect unless the exact URL is allow-listed in the
+      // project, so `next` is usually absent for these.
+      if (hash.get('type') === 'recovery') {
+        window.location.replace('/reset-password');
+        return;
+      }
+
       const { data: profile } = await supabase
         .from('profiles')
         .select('account:accounts(slug)')
@@ -72,12 +83,12 @@ export function CompleteSignIn() {
               That link didn&apos;t work
             </h1>
             <p className="text-muted-foreground mt-2 text-sm">{error}</p>
-            <a
+            <Link
               href="/login"
               className="bg-primary text-primary-foreground hover:bg-primary-hover mt-5 inline-flex h-10 items-center rounded-lg px-5 text-sm font-semibold transition-colors"
             >
               Go to sign in
-            </a>
+            </Link>
           </>
         ) : (
           <p className="text-muted-foreground mt-4 text-sm">Signing you in…</p>

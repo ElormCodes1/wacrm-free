@@ -67,6 +67,14 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL(next, url.origin));
   }
 
+  // A recovery link ends at the password form, whatever else is true:
+  // its whole purpose is to let somebody who cannot sign in choose a new
+  // password, and dropping them on the dashboard instead leaves them
+  // signed in with the password they had forgotten.
+  if (url.searchParams.get('type') === 'recovery') {
+    return NextResponse.redirect(new URL('/reset-password', url.origin));
+  }
+
   // Otherwise, their own workspace. Resolved from the session that was
   // just established, never from anything in the link.
   const { data: profile } = await supabase
