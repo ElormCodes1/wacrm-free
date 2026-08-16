@@ -14,6 +14,9 @@ import { NextResponse, type NextRequest } from 'next/server'
  */
 const TOP_LEVEL_ROUTES = new Set([
   'api',
+  // Without this /auth/callback reads as the company "auth" and an
+  // emailed link gets bounced to a customer sign-in page.
+  'auth',
   'join',
   'login',
   'signup',

@@ -68,9 +68,13 @@ export function SignupForm({ plans }: { plans: PublicPlan[] }) {
     // email back at the join page so the user can accept after
     // verifying. Without a token, Supabase uses its default
     // redirect (the app root).
+    // Always come back through /auth/callback. Without this Supabase
+    // falls back to the Site URL — the landing page — which creates no
+    // Supabase client, so the token in the link is never read and the
+    // visitor is silently not signed in.
     const emailRedirectTo = inviteToken
-      ? `${window.location.origin}/join/${encodeURIComponent(inviteToken)}`
-      : undefined;
+      ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(`/join/${inviteToken}`)}`
+      : `${window.location.origin}/auth/callback`;
 
     const { error } = await supabase.auth.signUp({
       email,
@@ -85,7 +89,7 @@ export function SignupForm({ plans }: { plans: PublicPlan[] }) {
           // this value comes from the browser like everything else here.
           ...(planId ? { plan_id: planId } : {}),
         },
-        ...(emailRedirectTo ? { emailRedirectTo } : {}),
+        emailRedirectTo,
       },
     });
 

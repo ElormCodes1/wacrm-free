@@ -37,6 +37,7 @@ import { BrandLogo } from '@/components/layout/brand-logo';
 import { formatMinor } from '@/lib/billing/money';
 import type { PublicPlan } from '@/lib/billing/public-plans';
 import { ModeToggle } from '@/components/layout/mode-toggle';
+import { AuthFragmentCatcher } from '@/components/auth/auth-fragment-catcher';
 
 /**
  * The public landing page.
@@ -120,6 +121,9 @@ export function LandingPage({ plans = [] }: { plans?: PublicPlan[] }) {
 
   return (
     <div className="bg-background text-foreground min-h-screen">
+      {/* Supabase sends confirmation links to the Site URL, which is this
+          page. Without this the token in the fragment is never read. */}
+      <AuthFragmentCatcher />
       {/* ---------- header ---------- */}
       <header className="border-border/60 bg-background/80 sticky top-0 z-50 border-b backdrop-blur-md">
         <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5">
