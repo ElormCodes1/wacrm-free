@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { emailLinkOrigin } from "@/lib/app-url";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,7 +21,13 @@ import {
 import { CheckCircle, UsersRound } from "lucide-react";
 import { BrandLogo } from "@/components/layout/brand-logo";
 
-export function SignupForm({ plans }: { plans: PublicPlan[] }) {
+export function SignupForm({
+  plans,
+  appOrigin,
+}: {
+  plans: PublicPlan[];
+  appOrigin?: string | null;
+}) {
   const searchParams = useSearchParams();
   // When the user lands here from `/join/<token>` we carry the
   // invite token in the query so it survives the signup → email
@@ -72,9 +79,10 @@ export function SignupForm({ plans }: { plans: PublicPlan[] }) {
     // falls back to the Site URL — the landing page — which creates no
     // Supabase client, so the token in the link is never read and the
     // visitor is silently not signed in.
+    const origin = emailLinkOrigin(appOrigin);
     const emailRedirectTo = inviteToken
-      ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(`/join/${inviteToken}`)}`
-      : `${window.location.origin}/auth/callback`;
+      ? `${origin}/auth/callback?next=${encodeURIComponent(`/join/${inviteToken}`)}`
+      : `${origin}/auth/callback`;
 
     const { error } = await supabase.auth.signUp({
       email,

@@ -1,6 +1,8 @@
 import { Suspense } from 'react';
+import { headers } from 'next/headers';
 
 import { listPublicPlans } from '@/lib/billing/public-plans';
+import { configuredOrigin, normaliseOrigin } from '@/lib/app-url';
 import { SignupForm } from './signup-form';
 
 /**
@@ -18,11 +20,23 @@ import { SignupForm } from './signup-form';
 export default async function SignupPage() {
   const plans = await listPublicPlans();
 
+  // The confirmation email carries this address, so it must not come from
+  // the browser: Next advertises itself as http://0.0.0.0:3000 and a link
+  // to a bind address is one nobody can follow.
+  const configured = configuredOrigin();
+  let appOrigin = configured;
+  if (!appOrigin) {
+    const h = await headers();
+    const host = h.get('x-forwarded-host') ?? h.get('host');
+    const proto = h.get('x-forwarded-proto') ?? 'https';
+    appOrigin = host ? normaliseOrigin(`${proto}://${host}`) : null;
+  }
+
   // useSearchParams inside the form opts it out of static prerendering
   // unless wrapped in Suspense — same pattern as /login.
   return (
     <Suspense fallback={null}>
-      <SignupForm plans={plans} />
+      <SignupForm plans={plans} appOrigin={appOrigin} />
     </Suspense>
   );
 }
