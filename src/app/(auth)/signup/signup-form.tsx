@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { emailLinkOrigin } from "@/lib/app-url";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { previewSlug, isUsableSlug } from "@/lib/tenancy/slugify";
 import { formatMinor } from "@/lib/billing/money";
@@ -286,9 +287,8 @@ export function SignupForm({
               <Label htmlFor="password" className="text-muted-foreground">
                 Password
               </Label>
-              <Input
+              <PasswordInput
                 id="password"
-                type="password"
                 placeholder="At least 6 characters"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -301,9 +301,9 @@ export function SignupForm({
               <Label htmlFor="confirmPassword" className="text-muted-foreground">
                 Confirm password
               </Label>
-              <Input
+              <PasswordInput
                 id="confirmPassword"
-                type="password"
+                fieldLabel="confirm password"
                 placeholder="Repeat your password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
