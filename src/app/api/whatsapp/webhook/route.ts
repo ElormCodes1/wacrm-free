@@ -110,8 +110,28 @@ export async function POST(request: Request) {
   if (secret) {
     const got = request.headers.get('x-evolution-secret')
     if (got !== secret) {
-      console.warn('[webhook] rejected request with bad x-evolution-secret')
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      // 503, not 401 — and that distinction cost a tenant their messages.
+      //
+      // The secret is registered with the gateway when an instance is
+      // CREATED. Set or change it afterwards and every existing instance
+      // keeps posting the old header, so this branch starts rejecting real
+      // traffic. Evolution treats 4xx as unrecoverable and cancels
+      // retries, which turned a configuration mismatch into permanent,
+      // silent message loss: the line read "connected" and nothing ever
+      // arrived.
+      //
+      // A 5xx is retryable, so those messages wait rather than die while
+      // the health sweep re-applies the webhook. Nothing is processed
+      // either way — this is not weaker authentication, it is a failure
+      // mode a customer's data can survive.
+      console.warn(
+        '[webhook] rejected request with bad x-evolution-secret — gateway is ' +
+          'posting a stale header; the health sweep re-applies it',
+      )
+      return NextResponse.json(
+        { error: 'Webhook secret mismatch; retry shortly' },
+        { status: 503 },
+      )
     }
   }
 

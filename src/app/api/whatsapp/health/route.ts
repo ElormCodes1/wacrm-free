@@ -23,7 +23,10 @@ import {
   isInstanceAlive,
   clearAliveCache,
   restartInstance,
+  setWebhook,
 } from '@/lib/whatsapp/provider/evolution'
+import { appWebhookConfig } from '@/lib/whatsapp/provider/config'
+import { getOperator } from '@/lib/operator/session'
 import { privilegedClient } from '@/lib/supabase/privileged';
 
 /** Give the socket a moment to come up before re-probing after a restart. */
@@ -35,6 +38,34 @@ interface NumberHealth {
   instance_name: string
   alive: boolean
   healed: boolean
+  /** Whether this sweep successfully re-applied the webhook settings. */
+  webhookReasserted?: boolean
+}
+
+/**
+ * Re-apply this app's webhook settings to an instance.
+ *
+ * The webhook — URL, events and the secret header — is registered once,
+ * when the instance is created. Anything that changes afterwards leaves
+ * the gateway posting with stale settings, and a stale SECRET is silent
+ * and total: the app answers 401, Evolution treats 4xx as unrecoverable
+ * and cancels retries, and every message is dropped with no row, no retry
+ * and no sign in the customer's inbox that anything is missing.
+ *
+ * That is not hypothetical — it is what happened to a paired tenant whose
+ * line read "connected" while nothing ever arrived. Re-asserting on every
+ * sweep costs one call per number and makes the mismatch heal itself
+ * instead of needing somebody to notice.
+ */
+async function reassertWebhook(instanceName: string): Promise<boolean> {
+  try {
+    await setWebhook({ instanceName, webhook: appWebhookConfig() })
+    return true
+  } catch {
+    // Best effort: a gateway that will not take the webhook must not stop
+    // the rest of the sweep from reporting.
+    return false
+  }
 }
 
 async function checkNumber(row: {
@@ -68,8 +99,11 @@ async function runHealthCheck(
   const results: NumberHealth[] = []
   for (const row of rows) {
     if (!row.instance_name) continue
+    // Before anything else: make the gateway's webhook match ours. A dead
+    // socket is visible; a stale secret is not.
+    const webhookReasserted = await reassertWebhook(row.instance_name)
     const health = await checkNumber(row)
-    results.push(health)
+    results.push({ ...health, webhookReasserted })
 
     // Keep the stored column honest — it is what Settings and the older
     // code paths read, and letting it drift is how a dead line reads as
@@ -86,6 +120,7 @@ async function runHealthCheck(
   return {
     checked: results.length,
     healed: results.filter((r) => r.healed).length,
+    webhooksReasserted: results.filter((r) => r.webhookReasserted).length,
     numbers: results,
   }
 }
@@ -103,8 +138,12 @@ async function handle(request: Request) {
     const token = process.env.WHATSAPP_HEALTH_TOKEN
     const auth = request.headers.get('authorization') ?? ''
     const isCron = Boolean(token) && auth === `Bearer ${token}`
+    // An operator can run the same platform-wide sweep. Without this,
+    // repairing a tenant's gateway meant knowing a cron token that lives
+    // only in the deployment's environment.
+    const isOperator = !isCron && Boolean(await getOperator())
 
-    if (isCron) {
+    if (isCron || isOperator) {
       // Service role: a cron has no session, and this sweeps every account.
       const admin = privilegedClient('system-maintenance')
       const { data: rows } = await admin
