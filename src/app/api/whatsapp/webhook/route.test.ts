@@ -21,10 +21,14 @@ import { resetIngestAvailability } from '@/lib/whatsapp/ingest-inbound';
 // captured payload shapes and assert on what reaches the database.
 // ============================================================
 
+/** Linked an hour ago — the cutoff every history test measures against. */
+const LINKED_AT = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
 const CONFIG = {
   id: 'cfg-1',
   account_id: 'acc-1',
   user_id: 'user-1',
+  first_linked_at: LINKED_AT,
 };
 
 /** after() callbacks, so the background processing can be awaited. */
@@ -228,24 +232,42 @@ describe('history replay (messages.set)', () => {
  * conversation, and dropping reconcile's replays silently disables the
  * only tool that recovers messages the gateway never delivered.
  */
-describe('history age cap', () => {
-  const old = () =>
+describe('history cutoff at the link', () => {
+  /** Sent before this number was ever linked — not our conversation. */
+  const beforeLink = () =>
     inboundText({
-      messageTimestamp: Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60,
+      messageTimestamp:
+        Math.floor(Date.parse(LINKED_AT) / 1000) - 30 * 24 * 60 * 60,
     });
 
-  it('skips gateway backlog older than the window', async () => {
-    await deliver(envelope('messages.set', old()));
+  /** Sent after linking, delivered late because the socket was down. */
+  const afterLink = () =>
+    inboundText({
+      messageTimestamp: Math.floor(Date.parse(LINKED_AT) / 1000) + 60,
+    });
+
+  it('skips backlog from before the number was linked', async () => {
+    await deliver(envelope('messages.set', beforeLink()));
     expect(db.inserted('messages')).toHaveLength(0);
   });
 
+  /**
+   * The message a blanket "no history" rule would destroy: sent after
+   * linking, arriving late under the backlog event because the socket was
+   * down. Real conversation this account missed, not old history.
+   */
+  it('keeps a reconnect backlog message sent after linking', async () => {
+    await deliver(envelope('messages.set', afterLink()));
+    expect(db.inserted('messages')).toHaveLength(1);
+  });
+
   it('never filters a live message, however old its timestamp', async () => {
-    await deliver(envelope('messages.upsert', old()));
+    await deliver(envelope('messages.upsert', beforeLink()));
     expect(db.inserted('messages')).toHaveLength(1);
   });
 
   it('exempts reconcile replays, which are old on purpose', async () => {
-    await deliver({ ...envelope('messages.set', old()), reconcile: true });
+    await deliver({ ...envelope('messages.set', beforeLink()), reconcile: true });
     expect(db.inserted('messages')).toHaveLength(1);
   });
 });

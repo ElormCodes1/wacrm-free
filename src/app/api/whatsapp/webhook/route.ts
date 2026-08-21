@@ -362,12 +362,29 @@ async function processEvolutionEvent(body: EvolutionWebhookBody) {
     case 'messages.upsert':
     case 'messages.set': {
       const isHistory = event === 'messages.set'
-      // The age cap applies to gateway backlog only. Reconcile's replays
+      // The cutoff applies to gateway backlog only. Reconcile's replays
       // are old on purpose, and live messages are never filtered.
       const capped = isHistory && !body.reconcile
+
+      // Anchored on when the NUMBER was linked, not on the clock. That is
+      // what separates old history (before the link — discard) from a
+      // reconnect backlog (after it — real conversation this account
+      // missed, however late it turns up). Cached with the rest of the
+      // instance config, so this costs nothing per message.
+      let linkedAtMs: number | null = null
+      if (capped) {
+        const cfg = await resolveConfig(instance)
+        const raw = cfg?.first_linked_at
+        const parsed = raw ? Date.parse(raw) : NaN
+        linkedAtMs = Number.isFinite(parsed) ? parsed : null
+      }
+
       let skipped = 0
       for (const msg of asMessages(body.data)) {
-        if (capped && !withinHistoryWindow(msg?.messageTimestamp, HISTORY_HOURS)) {
+        if (
+          capped &&
+          !withinHistoryWindow(msg?.messageTimestamp, linkedAtMs, HISTORY_HOURS)
+        ) {
           skipped += 1
           continue
         }
@@ -380,8 +397,9 @@ async function processEvolutionEvent(body: EvolutionWebhookBody) {
         // tell "the cap is working" from "delivery is broken" — a
         // distinction this system has already had to learn the hard way.
         console.info(
-          `[webhook] ${instance}: skipped ${skipped} history message(s) older than ` +
-            `${HISTORY_HOURS}h (WHATSAPP_HISTORY_HOURS)`,
+          `[webhook] ${instance}: skipped ${skipped} history message(s) predating ` +
+            `this number's link` +
+            (HISTORY_HOURS > 0 ? ` (minus ${HISTORY_HOURS}h grace)` : ''),
         )
       }
       break
@@ -1490,7 +1508,7 @@ async function resolveConfig(instanceName: string): Promise<InstanceConfig | nul
   return resolveInstanceConfig(instanceName, async (name) => {
     const { data, error } = await supabaseAdmin()
       .from('whatsapp_config')
-      .select('id, account_id, user_id')
+      .select('id, account_id, user_id, first_linked_at')
       .eq('instance_name', name)
       .limit(1)
       .maybeSingle()

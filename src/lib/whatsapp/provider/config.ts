@@ -37,6 +37,12 @@ export interface InstanceConfig {
   id: string
   account_id: string
   user_id: string
+  /**
+   * When this number first paired (see migration 083). The cutoff for how
+   * much history a link ingests. Null when the number has never been seen
+   * connected — treated as "unknown", which stores rather than discards.
+   */
+  first_linked_at?: string | null
 }
 
 /**
