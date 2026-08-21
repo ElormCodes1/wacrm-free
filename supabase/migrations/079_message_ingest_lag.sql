@@ -21,6 +21,11 @@
 -- number is worse than an absent one, so old rows stay NULL and are
 -- simply excluded from any lag query.
 -- ============================================================
+-- Wrapped in a transaction. Postgres DDL is transactional, so if any
+-- statement below fails the whole migration rolls back and the schema is
+-- exactly as it was — no half-applied state to reason about at 2am.
+
+begin;
 
 alter table public.messages
   add column if not exists ingested_at timestamptz;
@@ -41,3 +46,5 @@ comment on column public.messages.ingested_at is
 create index if not exists messages_ingested_at_idx
   on public.messages (ingested_at desc)
   where ingested_at is not null;
+
+commit;

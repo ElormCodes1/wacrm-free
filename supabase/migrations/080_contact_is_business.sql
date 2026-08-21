@@ -21,6 +21,11 @@
 -- nullable boolean would make every filter carry a three-state check for
 -- no benefit.
 -- ============================================================
+-- Wrapped in a transaction. Postgres DDL is transactional, so if any
+-- statement below fails the whole migration rolls back and the schema is
+-- exactly as it was — no half-applied state to reason about at 2am.
+
+begin;
 
 alter table public.contacts
   add column if not exists is_business boolean not null default false;
@@ -36,3 +41,5 @@ comment on column public.contacts.is_business is
 create index if not exists contacts_is_business_idx
   on public.contacts (account_id)
   where is_business;
+
+commit;

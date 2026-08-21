@@ -21,6 +21,11 @@
 -- seen the product either, and an account-level flag would mark them as
 -- onboarded by someone else's action.
 -- ============================================================
+-- Wrapped in a transaction. Postgres DDL is transactional, so if any
+-- statement below fails the whole migration rolls back and the schema is
+-- exactly as it was — no half-applied state to reason about at 2am.
+
+begin;
 
 alter table public.profiles
   add column if not exists onboarding_completed_at timestamptz,
@@ -34,3 +39,5 @@ comment on column public.profiles.onboarding_completed_at is
 comment on column public.profiles.onboarding_skipped_at is
   'When this person dismissed the walkthrough. Distinct from completing it — '
   'the guide stays available from the help menu rather than reappearing.';
+
+commit;
