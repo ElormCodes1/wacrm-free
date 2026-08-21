@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { NewGroupButton } from "./new-group-button";
+import { NewChatButton } from "./new-chat-button";
 import { contactDisplayName } from "@/lib/inbox/contact-name";
 
 interface ConversationListProps {
