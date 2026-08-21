@@ -1,4 +1,5 @@
 import { NextResponse, after } from 'next/server'
+import { Semaphore } from '@/lib/concurrency/semaphore'
 import { createClient } from '@supabase/supabase-js'
 import {
   getBase64FromMediaMessage,
@@ -100,6 +101,46 @@ interface WhatsAppMessage {
 }
 
 // ============================================================
+// Bounding the background work
+//
+// This route acks immediately and does everything in `after()`. With no
+// limit on how much of that runs at once, ingestion and page rendering
+// compete for one Node process — and ingestion wins, because it never
+// stops arriving. Production showed exactly that: the whole site
+// answering 504 at the proxy's 30s timeout while the app was healthy and
+// busy, with identical webhook work measuring 608ms per event under light
+// load and 1393ms (p90 2610ms) during the outage.
+//
+// Two queues rather than one, because the two kinds of work have very
+// different shapes and must not compete:
+//
+//   EVENT_LIMIT — message handling. Mostly sequential round trips to
+//     Supabase (remote, so each costs real latency). Small, because the
+//     point is to leave headroom for requests, not to maximise
+//     throughput: at ~600ms an event, two slots absorb far more than the
+//     handful of messages a second this app actually sees.
+//
+//   MEDIA_LIMIT — downloading a file from the gateway and uploading it to
+//     storage. Seconds, not milliseconds, and unpredictable in size. On a
+//     shared queue one video would hold a slot long enough to stall
+//     message ingestion behind it, so it gets its own — and only one, as
+//     media is never the thing a person is waiting to see (the row is
+//     already in their inbox showing a placeholder).
+//
+// Env-overridable so a bigger box can be told it is a bigger box, without
+// a deploy to find out.
+// ============================================================
+
+function limitFromEnv(name: string, fallback: number): number {
+  const raw = process.env[name]
+  const n = raw ? Number(raw) : NaN
+  return Number.isInteger(n) && n >= 1 ? n : fallback
+}
+
+const eventQueue = new Semaphore(limitFromEnv('WHATSAPP_EVENT_CONCURRENCY', 2))
+const mediaQueue = new Semaphore(limitFromEnv('WHATSAPP_MEDIA_CONCURRENCY', 1))
+
+// ============================================================
 // POST — receive Evolution events
 // ============================================================
 
@@ -175,6 +216,10 @@ export async function POST(request: Request) {
   // Ack immediately, process in the background — Evolution retries on slow
   // acks. `after()` (not a detached promise) keeps the serverless function
   // alive until the work completes.
+  //
+  // The ack is sent BEFORE the queue below, so waiting for a slot never
+  // delays Evolution's response. What it bounds is how much of this work
+  // runs at once — see EVENT_LIMIT.
   after(async () => {
     // Time it. "Messages don't sync fast" had no number attached to it,
     // and neither did any answer: nothing recorded how long the app took
@@ -182,24 +227,38 @@ export async function POST(request: Request) {
     // they point at completely different culprits. A large `behind` with
     // a small `took` is the gateway sitting on events; the reverse is
     // this app being slow. Guessing between those wasted a day.
-    const startedAt = Date.now()
+    const enqueuedAt = Date.now()
     // WhatsApp's send timestamp, in seconds. Absent on non-message events.
     const sentAt = messageTimestampOf(body)
     try {
-      await processEvolutionEvent(body)
+      await eventQueue.run(async () => {
+        const startedAt = Date.now()
+        // Queue time, kept SEPARATE from work time. Rolled together they
+        // hide the thing worth knowing: whether an event was slow because
+        // the work is slow, or because it sat behind other events. Those
+        // call for different fixes.
+        const waited = startedAt - enqueuedAt
+        try {
+          await processEvolutionEvent(body)
+        } finally {
+          const took = Date.now() - startedAt
+          const behind = sentAt === null ? null : enqueuedAt - sentAt * 1000
+          // Only when it is worth reading. A line per event would bury the
+          // slow ones in the fast ones, and the slow ones are the point.
+          if (took > 1_000 || waited > 1_000 || (behind !== null && behind > 5_000)) {
+            console.warn(
+              `[webhook] ${body.event ?? '?'} ${body.instance ?? '?'} took ${took}ms` +
+                (waited > 100 ? `, queued ${waited}ms` : '') +
+                (eventQueue.queued > 0 ? `, ${eventQueue.queued} waiting` : '') +
+                (behind === null
+                  ? ''
+                  : `, arrived ${Math.round(behind / 1000)}s after it was sent`),
+            )
+          }
+        }
+      })
     } catch (error) {
       console.error('Error processing Evolution webhook:', error)
-    } finally {
-      const took = Date.now() - startedAt
-      const behind = sentAt === null ? null : startedAt - sentAt * 1000
-      // Only when it is worth reading. A line per event would bury the
-      // slow ones in the fast ones, and the slow ones are the point.
-      if (took > 1_000 || (behind !== null && behind > 5_000)) {
-        console.warn(
-          `[webhook] ${body.event ?? '?'} ${body.instance ?? '?'} took ${took}ms` +
-            (behind === null ? '' : `, arrived ${Math.round(behind / 1000)}s after it was sent`),
-        )
-      }
     }
   })
 
@@ -2127,7 +2186,8 @@ function deferMedia(args: {
 }): void {
   after(async () => {
     try {
-      await backfillMessageMedia(args)
+      // Its own queue: a large file must never hold up the next message.
+      await mediaQueue.run(() => backfillMessageMedia(args))
     } catch (err) {
       // A message with unreachable media is still a message. Log it and
       // leave the row at 'pending' rather than failing the delivery.
