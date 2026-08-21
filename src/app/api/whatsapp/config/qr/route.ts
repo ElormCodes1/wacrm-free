@@ -44,12 +44,32 @@ export async function GET(request: Request) {
 
     const { data: config } = await supabase
       .from('whatsapp_config')
-      .select('instance_name')
+      .select('instance_name, connected_at, connection_state')
       .eq('id', numberId)
       .eq('account_id', accountId)
       .maybeSingle()
     if (!config?.instance_name) {
       return NextResponse.json({ error: 'Number not found' }, { status: 404 })
+    }
+
+    // A number that has never paired needs none of what follows. There is
+    // no socket to probe, nothing to restart, and no stale "connected"
+    // belief to clear — so skip straight to asking for the QR.
+    //
+    // This is the whole point: adding a number is exactly the case where
+    // every step below is guaranteed to do nothing except wait, and it was
+    // waiting long enough that the proxy hung up and the QR never arrived.
+    const neverPaired = !config.connected_at && config.connection_state !== 'open'
+    if (neverPaired) {
+      const fresh = await connectInstance({ instanceName: config.instance_name })
+      return NextResponse.json({
+        state: 'close',
+        qrcode: {
+          base64: fresh.base64 ?? null,
+          code: fresh.code ?? null,
+          pairingCode: fresh.pairingCode ?? null,
+        },
+      })
     }
 
     // Probe rather than trust getConnectionState. It reports the gateway's

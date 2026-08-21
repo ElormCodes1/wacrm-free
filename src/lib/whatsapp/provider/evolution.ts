@@ -45,24 +45,58 @@ interface EvolutionErrorBody {
 }
 
 /**
+ * How long any single Evolution call may take.
+ *
+ * There was no limit at all, and one call that never returns is enough to
+ * hang a page: the settings screen asks about each number, an unpaired
+ * instance has no WhatsApp socket to answer, and the request sat there
+ * until the proxy gave up at thirty seconds. The visitor saw a spinner
+ * that never stopped — on the QR screen, which is by definition the one
+ * place where every instance IS unpaired.
+ *
+ * Eight seconds is far longer than a healthy gateway needs and far
+ * shorter than a proxy's patience, so a stuck call now surfaces as a
+ * failed check rather than a dead page.
+ */
+const REQUEST_TIMEOUT_MS = 8_000
+
+/** Shorter still for liveness: it is a probe, and a slow answer is a no. */
+const PROBE_TIMEOUT_MS = 5_000
+
+/**
  * Perform a request against the Evolution API and parse JSON.
- * Throws an Error with a human-readable message on non-2xx.
+ * Throws an Error with a human-readable message on non-2xx, and gives up
+ * rather than hanging — see REQUEST_TIMEOUT_MS.
  */
 async function evolutionFetch<T>(
   path: string,
-  init: Omit<RequestInit, 'body'> & { body?: unknown } = {},
+  init: Omit<RequestInit, 'body'> & { body?: unknown; timeoutMs?: number } = {},
 ): Promise<T> {
   const { baseUrl, apiKey } = evolutionConfig()
-  const { body, headers, ...rest } = init
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...rest,
-    headers: {
-      apikey: apiKey,
-      ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-      ...(headers ?? {}),
-    },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  })
+  const { body, headers, timeoutMs, ...rest } = init
+
+  let response: Response
+  try {
+    response = await fetch(`${baseUrl}${path}`, {
+      ...rest,
+      headers: {
+        apikey: apiKey,
+        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...(headers ?? {}),
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(timeoutMs ?? REQUEST_TIMEOUT_MS),
+    })
+  } catch (err) {
+    // Say which call gave up. "fetch failed" on its own tells whoever
+    // reads the logs nothing about which number or which operation.
+    if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
+      throw new Error(
+        `Evolution API did not respond within ${(timeoutMs ?? REQUEST_TIMEOUT_MS) / 1000}s (${path})`,
+      )
+    }
+    throw err
+  }
 
   const text = await response.text()
   let data: unknown = undefined
@@ -530,13 +564,16 @@ export async function getBase64FromMediaMessage(args: {
 export async function checkWhatsappNumbers(args: {
   instanceName: string
   numbers: string[]
+  /** Liveness probing passes a shorter budget — a slow answer is a no. */
+  timeoutMs?: number
 }): Promise<Array<{ number: string; exists: boolean; jid?: string }>> {
-  const { instanceName, numbers } = args
+  const { instanceName, numbers, timeoutMs } = args
   const data = await evolutionFetch<
     Array<{ number?: string; exists?: boolean; jid?: string }>
   >(`/chat/whatsappNumbers/${encodeURIComponent(instanceName)}`, {
     method: 'POST',
     body: { numbers },
+    timeoutMs,
   })
   return (data ?? []).map((r) => ({
     number: r.number ?? '',
@@ -582,7 +619,11 @@ export async function isInstanceAlive(
   try {
     // Probing our own number keeps the query meaningless to anyone else.
     const probe = opts.number ?? '000000000000'
-    const res = await checkWhatsappNumbers({ instanceName, numbers: [probe] })
+    const res = await checkWhatsappNumbers({
+      instanceName,
+      numbers: [probe],
+      timeoutMs: PROBE_TIMEOUT_MS,
+    })
     alive = Array.isArray(res)
   } catch {
     alive = false

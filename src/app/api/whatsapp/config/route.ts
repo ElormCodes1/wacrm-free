@@ -51,49 +51,63 @@ export async function GET() {
 
     const { data: rows } = await supabase
       .from('whatsapp_config')
-      .select('id, label, instance_name, connection_state, phone_number_id')
+      .select('id, label, instance_name, connection_state, phone_number_id, connected_at')
       .eq('account_id', accountId)
       .order('created_at', { ascending: true })
 
-    const numbers = []
-    let anyConnected = false
-    for (const row of rows ?? []) {
-      let state = row.connection_state ?? 'close'
-      let phone: string | null = null
-      let name: string | null = null
-      if (row.instance_name) {
-        try {
-          // getConnectionState reports the gateway's *belief*, which stays
-          // "open" through a dead socket — the failure that made a
-          // disconnected line look healthy. Probe it, then report.
-          const alive = await isInstanceAlive(row.instance_name)
-          state = alive ? 'open' : 'close'
-          const info = await fetchInstance(row.instance_name)
-          phone = info?.ownerJid ? jidToPhone(info.ownerJid) : null
-          name = info?.profileName ?? null
-          if (state !== row.connection_state) {
-            await supabase
-              .from('whatsapp_config')
-              .update({
-                connection_state: state,
-                status: statusFor(state),
-                connected_at: state === 'open' ? new Date().toISOString() : null,
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', row.id)
+    // Every number is checked AT ONCE. Done one at a time, a gateway
+    // having a bad day cost one timeout per number — so the page got
+    // slower the more numbers a customer had, which is backwards.
+    const numbers = await Promise.all(
+      (rows ?? []).map(async (row) => {
+        let state = row.connection_state ?? 'close'
+        let phone: string | null = null
+        let name: string | null = null
+
+        // A number that has never paired has no WhatsApp socket to answer
+        // a probe, so asking can only wait for the timeout. That is the
+        // state EVERY number is in on the QR screen, which is how this
+        // hung the one page where it mattered.
+        const everPaired = Boolean(row.connected_at) || row.connection_state === 'open'
+
+        if (row.instance_name && everPaired) {
+          try {
+            // getConnectionState reports the gateway's *belief*, which stays
+            // "open" through a dead socket — the failure that made a
+            // disconnected line look healthy. Probe it, then report.
+            const alive = await isInstanceAlive(row.instance_name)
+            state = alive ? 'open' : 'close'
+            const info = await fetchInstance(row.instance_name)
+            phone = info?.ownerJid ? jidToPhone(info.ownerJid) : null
+            name = info?.profileName ?? null
+            if (state !== row.connection_state) {
+              await supabase
+                .from('whatsapp_config')
+                .update({
+                  connection_state: state,
+                  status: statusFor(state),
+                  connected_at: state === 'open' ? new Date().toISOString() : null,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', row.id)
+            }
+          } catch {
+            /* keep stored state — a gateway that will not answer must not
+               stop the page from rendering */
           }
-        } catch {
-          /* keep stored state */
         }
-      }
-      if (state === 'open') anyConnected = true
-      numbers.push({
-        id: row.id,
-        label: row.label,
-        connection_state: state,
-        phone_info: state === 'open' ? { display_phone_number: phone, verified_name: name } : null,
-      })
-    }
+
+        return {
+          id: row.id,
+          label: row.label,
+          connection_state: state,
+          phone_info:
+            state === 'open' ? { display_phone_number: phone, verified_name: name } : null,
+        }
+      }),
+    )
+
+    const anyConnected = numbers.some((n) => n.connection_state === 'open')
 
     return NextResponse.json({ connected: anyConnected, numbers })
   } catch (error) {
