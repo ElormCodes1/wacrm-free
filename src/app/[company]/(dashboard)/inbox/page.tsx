@@ -14,6 +14,7 @@ import type {
   ConversationStatus,
 } from '@/types';
 import { useRealtime } from '@/hooks/use-realtime';
+import { shouldMovePreview, previewText } from '@/lib/whatsapp/conversation-preview';
 import { ConversationList } from '@/components/inbox/conversation-list';
 import { MessageThread } from '@/components/inbox/message-thread';
 import { ContactSidebar } from '@/components/inbox/contact-sidebar';
@@ -347,8 +348,21 @@ export default function InboxPage() {
               c.id === newMsg.conversation_id
                 ? {
                     ...c,
-                    last_message_text: newMsg.content_text ?? '',
-                    last_message_at: newMsg.created_at,
+                    // Two bugs lived on these lines. `content_text ?? ''`
+                    // blanked the preview for media, which the server
+                    // stores as '[image]' — so a preview looked like it
+                    // had vanished until a reload. And the update was
+                    // unconditional, so a replayed or late-arriving
+                    // message dragged the preview BACKWARDS to older text.
+                    ...(shouldMovePreview(c.last_message_at, newMsg.created_at)
+                      ? {
+                          last_message_text: previewText(
+                            newMsg.content_text,
+                            newMsg.content_type,
+                          ),
+                          last_message_at: newMsg.created_at,
+                        }
+                      : {}),
                     unread_count:
                       activeConversation?.id === newMsg.conversation_id
                         ? 0

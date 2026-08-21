@@ -2,6 +2,7 @@ import { NextResponse, after } from 'next/server'
 import { FairQueue } from '@/lib/concurrency/fair-queue'
 import { historyHoursFromEnv, withinHistoryWindow } from '@/lib/whatsapp/history-window'
 import { ingestInbound } from '@/lib/whatsapp/ingest-inbound'
+import { shouldMovePreview, previewText } from '@/lib/whatsapp/conversation-preview'
 import { createClient } from '@supabase/supabase-js'
 import {
   getBase64FromMediaMessage,
@@ -694,8 +695,11 @@ async function handleGroupMessage(instanceName: string, data: any) {
   await supabaseAdmin()
     .from('conversations')
     .update({
-      last_message_text: preview,
-      last_message_at: new Date().toISOString(),
+      // Only when this really is the newest. Stamping now() let a
+      // replayed message jump to the top of the inbox with old text.
+      ...(shouldMovePreview(convResult.conversation.last_message_at, messageSentAt(message))
+        ? { last_message_text: preview, last_message_at: messageSentAt(message) }
+        : {}),
       unread_count: key.fromMe
         ? convResult.conversation.unread_count || 0
         : (convResult.conversation.unread_count || 0) + 1,
@@ -1243,8 +1247,12 @@ async function handleOutboundEcho(instanceName: string, data: any, resolvedJid: 
   await supabaseAdmin()
     .from('conversations')
     .update({
-      last_message_text: contentText || `[${message.type}]`,
-      last_message_at: new Date().toISOString(),
+      ...(shouldMovePreview(convResult.conversation.last_message_at, messageSentAt(message))
+        ? {
+            last_message_text: previewText(contentText, message.type),
+            last_message_at: messageSentAt(message),
+          }
+        : {}),
       updated_at: new Date().toISOString(),
     })
     .eq('id', convResult.conversation.id)
@@ -1515,6 +1523,19 @@ async function resolveConfig(instanceName: string): Promise<InstanceConfig | nul
     if (error || !data) return null
     return data
   })
+}
+
+/**
+ * A message's own send time, as an ISO string.
+ *
+ * Conversation previews order by when people SPOKE, not by when our
+ * webhook got round to the event. Those differ by hours for anything
+ * replayed, which is how an old message ended up at the top of an inbox.
+ */
+function messageSentAt(message: WhatsAppMessage): string {
+  const seconds = parseInt(message.timestamp)
+  if (!Number.isFinite(seconds) || seconds <= 0) return new Date().toISOString()
+  return new Date(seconds * 1000).toISOString()
 }
 
 /** Convert a Baileys message object into the internal WhatsAppMessage. */
@@ -2163,8 +2184,12 @@ async function processMessage(
     const { error: convError } = await supabaseAdmin()
       .from('conversations')
       .update({
-        last_message_text: contentText || `[${message.type}]`,
-        last_message_at: new Date().toISOString(),
+        ...(shouldMovePreview(legacyConversation.last_message_at, messageSentAt(message))
+          ? {
+              last_message_text: previewText(contentText, message.type),
+              last_message_at: messageSentAt(message),
+            }
+          : {}),
         unread_count: (legacyConversation.unread_count || 0) + 1,
         updated_at: new Date().toISOString(),
       })
