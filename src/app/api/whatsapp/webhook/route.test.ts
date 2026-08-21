@@ -195,18 +195,56 @@ describe('history replay (messages.set)', () => {
   // The gateway skips anything already in ITS database on the assumption
   // that stored means delivered, so recovery replays backlog through this
   // event — which means it re-delivers things we may already hold.
+  /**
+   * Recent, explicitly. Backlog is now filtered by age, so a fixture with
+   * a hardcoded timestamp would drift out of the window as real time
+   * passes and start failing these tests for a reason that has nothing to
+   * do with what they check.
+   */
+  const recent = () =>
+    inboundText({ messageTimestamp: Math.floor(Date.now() / 1000) - 60 });
+
   it('does not duplicate a message already in the thread', async () => {
     db.rows.messages = [
       { id: 'm-existing', message_id: 'MSGID-TEXT-1', conversation_id: 'conv-1' },
     ];
 
-    await deliver(envelope('messages.set', inboundText()));
+    await deliver(envelope('messages.set', recent()));
 
     expect(db.inserted('messages')).toHaveLength(0);
   });
 
   it('still stores a backlog message that is genuinely new', async () => {
-    await deliver(envelope('messages.set', inboundText()));
+    await deliver(envelope('messages.set', recent()));
+    expect(db.inserted('messages')).toHaveLength(1);
+  });
+});
+
+/**
+ * The history age cap has to tell three cases apart, and getting any of
+ * them wrong is expensive in a different way: keeping old backlog wastes
+ * storage on chats nobody will read, dropping live messages loses real
+ * conversation, and dropping reconcile's replays silently disables the
+ * only tool that recovers messages the gateway never delivered.
+ */
+describe('history age cap', () => {
+  const old = () =>
+    inboundText({
+      messageTimestamp: Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60,
+    });
+
+  it('skips gateway backlog older than the window', async () => {
+    await deliver(envelope('messages.set', old()));
+    expect(db.inserted('messages')).toHaveLength(0);
+  });
+
+  it('never filters a live message, however old its timestamp', async () => {
+    await deliver(envelope('messages.upsert', old()));
+    expect(db.inserted('messages')).toHaveLength(1);
+  });
+
+  it('exempts reconcile replays, which are old on purpose', async () => {
+    await deliver({ ...envelope('messages.set', old()), reconcile: true });
     expect(db.inserted('messages')).toHaveLength(1);
   });
 });

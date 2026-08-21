@@ -101,6 +101,11 @@ async function reconcileNumber(
           event: 'messages.set',
           instance: row.instance_name,
           data: message,
+          // Exempt from the history age cap. Everything recovered here is
+          // old by definition — that is what makes it worth recovering —
+          // so the cap that stops a fresh link hoarding months of chat
+          // must not silently gut this sweep.
+          reconcile: true,
         }),
       })
       if (res.ok) recovered += 1

@@ -1,5 +1,6 @@
 import { NextResponse, after } from 'next/server'
 import { Semaphore } from '@/lib/concurrency/semaphore'
+import { historyHoursFromEnv, withinHistoryWindow } from '@/lib/whatsapp/history-window'
 import { createClient } from '@supabase/supabase-js'
 import {
   getBase64FromMediaMessage,
@@ -61,6 +62,17 @@ interface EvolutionWebhookBody {
   // The Baileys payload — shape depends on `event`.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data?: any
+  /**
+   * Set by /api/whatsapp/reconcile, never by the gateway.
+   *
+   * Reconcile replays messages the gateway stored but never delivered,
+   * and it replays them as `messages.set` so they inherit the backlog
+   * path's dedupe. Those messages are old BY DEFINITION — that is the
+   * whole point of recovering them — so the history age cap below must
+   * not apply. Without this flag, adding the cap would silently disable
+   * the one tool that repairs missed messages.
+   */
+  reconcile?: boolean
 }
 
 /**
@@ -130,6 +142,21 @@ interface WhatsAppMessage {
 // Env-overridable so a bigger box can be told it is a bigger box, without
 // a deploy to find out.
 // ============================================================
+
+// ============================================================
+// How much history a newly linked number brings with it.
+//
+// A one-off history sync fires on link and arrives deep — one number
+// pulled 653 messages over three months, 72% of them older than a day.
+// The policy, and why it is an age cap rather than a count cap, lives
+// with the helper in @/lib/whatsapp/history-window.
+//
+// Applied here because this is the only place that can tell the three
+// cases apart: gateway backlog (capped), live messages (never), and
+// reconcile's replays (old on purpose, exempt).
+// ============================================================
+
+const HISTORY_HOURS = historyHoursFromEnv()
 
 function limitFromEnv(name: string, fallback: number): number {
   const raw = process.env[name]
@@ -306,13 +333,32 @@ async function processEvolutionEvent(body: EvolutionWebhookBody) {
 
   switch (event) {
     case 'messages.upsert':
-    case 'messages.set':
+    case 'messages.set': {
+      const isHistory = event === 'messages.set'
+      // The age cap applies to gateway backlog only. Reconcile's replays
+      // are old on purpose, and live messages are never filtered.
+      const capped = isHistory && !body.reconcile
+      let skipped = 0
       for (const msg of asMessages(body.data)) {
+        if (capped && !withinHistoryWindow(msg?.messageTimestamp, HISTORY_HOURS)) {
+          skipped += 1
+          continue
+        }
         // messages.set is the reconnect backlog, which re-delivers things
         // we may already hold. Only that path pays for a dedupe check.
-        await handleInboundMessage(instance, msg, event === 'messages.set')
+        await handleInboundMessage(instance, msg, isHistory)
+      }
+      if (skipped > 0) {
+        // Say so. Silently dropping messages is how you end up unable to
+        // tell "the cap is working" from "delivery is broken" — a
+        // distinction this system has already had to learn the hard way.
+        console.info(
+          `[webhook] ${instance}: skipped ${skipped} history message(s) older than ` +
+            `${HISTORY_HOURS}h (WHATSAPP_HISTORY_HOURS)`,
+        )
       }
       break
+    }
 
     case 'messages.update':
     case 'send.message.update':
