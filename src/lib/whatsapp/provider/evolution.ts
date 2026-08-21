@@ -346,6 +346,7 @@ export async function setWebhook(args: {
 export async function findWebhook(instanceName: string): Promise<{
   enabled: boolean
   url: string | null
+  events: string[]
   headerNames: string[]
 } | null> {
   try {
@@ -355,12 +356,17 @@ export async function findWebhook(instanceName: string): Promise<{
     )) as {
       enabled?: boolean
       url?: string
+      events?: string[]
       headers?: Record<string, string>
     } | null
     if (!res) return null
     return {
       enabled: res.enabled ?? false,
       url: res.url ?? null,
+      // The field that decides whether the gateway posts AT ALL. A set
+      // call that stored an empty or filtered list looks identical to a
+      // healthy webhook on every other field, and goes silent.
+      events: res.events ?? [],
       // NAMES only. The values are the shared secret, and a diagnostic
       // that leaks the credential it is checking is worse than none.
       headerNames: Object.keys(res.headers ?? {}),

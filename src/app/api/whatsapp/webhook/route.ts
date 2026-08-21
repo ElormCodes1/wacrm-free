@@ -176,14 +176,54 @@ export async function POST(request: Request) {
   // acks. `after()` (not a detached promise) keeps the serverless function
   // alive until the work completes.
   after(async () => {
+    // Time it. "Messages don't sync fast" had no number attached to it,
+    // and neither did any answer: nothing recorded how long the app took
+    // or how stale an event already was on arrival. Both halves matter —
+    // they point at completely different culprits. A large `behind` with
+    // a small `took` is the gateway sitting on events; the reverse is
+    // this app being slow. Guessing between those wasted a day.
+    const startedAt = Date.now()
+    // WhatsApp's send timestamp, in seconds. Absent on non-message events.
+    const sentAt = messageTimestampOf(body)
     try {
       await processEvolutionEvent(body)
     } catch (error) {
       console.error('Error processing Evolution webhook:', error)
+    } finally {
+      const took = Date.now() - startedAt
+      const behind = sentAt === null ? null : startedAt - sentAt * 1000
+      // Only when it is worth reading. A line per event would bury the
+      // slow ones in the fast ones, and the slow ones are the point.
+      if (took > 1_000 || (behind !== null && behind > 5_000)) {
+        console.warn(
+          `[webhook] ${body.event ?? '?'} ${body.instance ?? '?'} took ${took}ms` +
+            (behind === null ? '' : `, arrived ${Math.round(behind / 1000)}s after it was sent`),
+        )
+      }
     }
   })
 
   return NextResponse.json({ status: 'received' }, { status: 200 })
+}
+
+/**
+ * WhatsApp's own send timestamp for the first message in an event, in
+ * seconds, or null if this event carries no message.
+ *
+ * Read-only and defensive: a diagnostic must never be the thing that
+ * throws on an unexpected payload shape.
+ */
+function messageTimestampOf(body: EvolutionWebhookBody): number | null {
+  try {
+    for (const m of asMessages(body.data)) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ts = Number((m as any)?.messageTimestamp)
+      if (Number.isFinite(ts) && ts > 0) return ts
+    }
+  } catch {
+    /* not a message event */
+  }
+  return null
 }
 
 async function processEvolutionEvent(body: EvolutionWebhookBody) {
@@ -514,11 +554,8 @@ async function handleGroupMessage(instanceName: string, data: any) {
     .eq('id', convResult.conversation.id)
 
   if (mediaPending) {
-    await backfillMessageMedia({
-      rowId: insertedRow.id,
-      instanceName,
-      message,
-    })
+    // AFTER the response, not before it. See the note on deferMedia.
+    deferMedia({ rowId: insertedRow.id, instanceName, message })
   }
 }
 
@@ -1063,11 +1100,8 @@ async function handleOutboundEcho(instanceName: string, data: any, resolvedJid: 
     .eq('id', convResult.conversation.id)
 
   if (mediaPending) {
-    await backfillMessageMedia({
-      rowId: insertedRow.id,
-      instanceName,
-      message,
-    })
+    // AFTER the response, not before it. See the note on deferMedia.
+    deferMedia({ rowId: insertedRow.id, instanceName, message })
   }
 }
 
@@ -2064,6 +2098,44 @@ async function storeInboundMedia(
  * Awaited by callers (never detached): we're inside `after()`, and a
  * floating promise can be frozen before it writes.
  */
+/**
+ * Fetch a message's media without holding up the messages behind it.
+ *
+ * This does NOT speed up the ack — the route already answers Evolution
+ * immediately and does all its work in `after()`, so the gateway was
+ * never waiting on a download.
+ *
+ * What it fixes is narrower and real: `messages.upsert` can carry several
+ * messages, and they are processed in a serial for-loop. Awaiting a
+ * download-and-upload inline meant one photo delayed the INSERT of every
+ * message after it in the same batch — most visibly on a reconnect
+ * backlog, where a whole conversation replays through that loop at once.
+ *
+ * Nothing is lost by deferring. The row is inserted with
+ * `media_status: 'pending'`, the bubble renders a placeholder, and the
+ * URL arrives over realtime when the update lands — which is what the
+ * note on backfillMessageMedia has described all along.
+ *
+ * Nesting `after` inside `after` is supported and keeps the work within
+ * the request's lifetime, so a failure is logged rather than escaping as
+ * an unhandled rejection.
+ */
+function deferMedia(args: {
+  rowId: string
+  instanceName: string
+  message: WhatsAppMessage
+}): void {
+  after(async () => {
+    try {
+      await backfillMessageMedia(args)
+    } catch (err) {
+      // A message with unreachable media is still a message. Log it and
+      // leave the row at 'pending' rather than failing the delivery.
+      console.error('[webhook] media backfill failed for', args.rowId, err)
+    }
+  })
+}
+
 async function backfillMessageMedia(args: {
   rowId: string
   instanceName: string
