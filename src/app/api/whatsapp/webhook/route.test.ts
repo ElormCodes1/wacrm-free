@@ -9,6 +9,7 @@ import {
   inboundGroupText,
   type SupabaseStub,
 } from './webhook-harness';
+import { resetIngestAvailability } from '@/lib/whatsapp/ingest-inbound';
 
 // ============================================================
 // Inbound webhook — the paths that have actually broken.
@@ -345,3 +346,77 @@ describe('group messages', () => {
     expect(msg.author_phone).toBe('233200000000');
   });
 });
+
+/**
+ * The single-round-trip ingest path (migration 082).
+ *
+ * The rest of this suite runs against a stub with no rpc, which is not an
+ * oversight — a database without the migration is exactly what the
+ * fallback exists for, so those tests prove the fallback. These prove the
+ * other branch, which production will actually use.
+ */
+describe('fast ingest', () => {
+  const fastRow = {
+    deduped: false,
+    contact_id: 'c-fast',
+    contact_created: false,
+    contact_avatar_url: 'https://example.test/a.jpg',
+    conversation_id: 'v-fast',
+    conversation_created: false,
+    message_row_id: 'm-fast',
+    is_first_inbound: false,
+  };
+
+  beforeEach(() => {
+    resetIngestAvailability();
+  });
+
+  it('stores the message through the function, not through four queries', async () => {
+    db.setRpc(async () => ({ data: fastRow, error: null }));
+
+    await deliver(envelope('messages.upsert', inboundText()));
+
+    expect(db.rpcCalls.map((c) => c.name)).toContain('whatsapp_ingest_inbound');
+    // The whole point: no separate message insert, no contact/conversation
+    // round trips, no conversation counter update.
+    expect(db.inserted('messages')).toHaveLength(0);
+    expect(db.inserted('contacts')).toHaveLength(0);
+    expect(db.inserted('conversations')).toHaveLength(0);
+  });
+
+  it('passes the message through as the function expects it', async () => {
+    db.setRpc(async () => ({ data: fastRow, error: null }));
+
+    await deliver(envelope('messages.upsert', inboundText()));
+
+    const args = db.rpcCalls[0].args as Record<string, unknown>;
+    expect(args.p_message_id).toBe('MSGID-TEXT-1');
+    expect(args.p_content_type).toBe('text');
+    expect(args.p_content_text).toBe('hello there');
+    expect(args.p_insert_message).toBe(true);
+    expect(args.p_is_history).toBe(false);
+  });
+
+  it('honours a dedupe verdict without storing anything', async () => {
+    db.setRpc(async () => ({ data: { deduped: true }, error: null }));
+
+    await deliver(envelope('messages.upsert', inboundText()));
+
+    expect(db.inserted('messages')).toHaveLength(0);
+  });
+
+  /**
+   * The deployment-order guarantee: code can ship before the SQL does, and
+   * that must cost latency, never a message.
+   */
+  it('falls back to the original path when the function is missing', async () => {
+    db.setRpc(async () => ({
+      data: null,
+      error: { code: 'PGRST202', message: 'Could not find the function' },
+    }));
+
+    await deliver(envelope('messages.upsert', inboundText()));
+
+    expect(db.inserted('messages')).toHaveLength(1);
+  });
+})

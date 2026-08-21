@@ -28,6 +28,15 @@ export interface SupabaseStub {
   inserted(table: string): Record<string, unknown>[];
   /** Every update applied to `table`. */
   updated(table: string): Record<string, unknown>[];
+  /**
+   * Install a stand-in for the single-round-trip ingest function
+   * (migration 082). Absent by default, which is the honest default: a
+   * database without the migration is exactly what the fallback path
+   * exists for, and it is what most of these tests should exercise.
+   */
+  setRpc(fn: ((name: string, args: unknown) => Promise<unknown>) | null): void;
+  /** Calls made to rpc(), in order. */
+  rpcCalls: { name: string; args: unknown }[];
 }
 
 /**
@@ -118,10 +127,23 @@ export function makeSupabaseStub(
     },
   };
 
+  const rpcCalls: { name: string; args: unknown }[] = [];
+
   return {
     ops,
     rows: store,
     client,
+    rpcCalls,
+    setRpc: (fn) => {
+      // Assigned onto the same client object the route already holds, so
+      // a test can switch the fast path on after the stub is built.
+      (client as { rpc?: unknown }).rpc = fn
+        ? async (name: string, args: unknown) => {
+            rpcCalls.push({ name, args });
+            return fn(name, args);
+          }
+        : undefined;
+    },
     inserted: (table) =>
       ops.filter((o) => o.table === table && o.op === 'insert').map(
         (o) => o.payload as Record<string, unknown>

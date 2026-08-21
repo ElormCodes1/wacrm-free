@@ -1,6 +1,7 @@
 import { NextResponse, after } from 'next/server'
 import { FairQueue } from '@/lib/concurrency/fair-queue'
 import { historyHoursFromEnv, withinHistoryWindow } from '@/lib/whatsapp/history-window'
+import { ingestInbound } from '@/lib/whatsapp/ingest-inbound'
 import { createClient } from '@supabase/supabase-js'
 import {
   getBase64FromMediaMessage,
@@ -1924,67 +1925,12 @@ async function processMessage(
   const senderPhone = normalizePhone(message.from)
   const contactName = contact.profile.name
 
-  const contactOutcome =
-    presetContact ??
-    (await findOrCreateContact(accountId, configOwnerUserId, senderPhone, contactName))
-  if (!contactOutcome) return
-  const contactRecord = contactOutcome.contact
-
-  // The contact just messaged us → they are definitely on WhatsApp.
-  // Awaited (not a floating promise) because we're inside after(): a
-  // detached promise can be frozen before it writes. Idempotent.
-  if (contactRecord.is_on_whatsapp !== true) {
-    const { error: waErr } = await supabaseAdmin()
-      .from('contacts')
-      .update({ is_on_whatsapp: true, whatsapp_checked_at: new Date().toISOString() })
-      .eq('id', contactRecord.id)
-    if (waErr) console.error('[webhook] is_on_whatsapp update failed:', waErr.message)
-  }
-
-  // On first contact, pull their avatar + enrich with WhatsApp profile
-  // (about text, business profile). Best-effort, awaited (after() safety).
-  if (!contactRecord.avatar_url) {
-    await syncContactAvatar(supabaseAdmin(), instanceName, contactRecord.id, senderPhone)
-  }
-  if (contactOutcome.wasCreated) {
-    await syncContactProfile(supabaseAdmin(), instanceName, contactRecord.id, senderPhone)
-  }
-
-  const convResult = await findOrCreateConversation(
-    accountId,
-    configOwnerUserId,
-    contactRecord.id,
-    whatsappConfigId,
-  )
-  if (!convResult) {
-    if (contactOutcome.pendingWrites) await contactOutcome.pendingWrites
-    return
-  }
-  const conversation = convResult.conversation
-
-  if (convResult.created) {
-    await dispatchWebhookEvent(supabaseAdmin(), accountId, 'conversation.created', {
-      conversation_id: conversation.id,
-      contact_id: contactRecord.id,
-    })
-  }
-
-  // Reactions short-circuit — they aren't messages.
-  if (message.type === 'reaction') {
-    await handleReaction(message, conversation.id, contactRecord.id)
-    if (contactOutcome.pendingWrites) await contactOutcome.pendingWrites
-    return
-  }
-
+  // ---- Pure computation, hoisted above the branch ----
+  //
+  // Both paths need these. The fast path needs them as INPUTS rather than
+  // producing them along the way, so they can no longer sit where they
+  // used to — after the contact and conversation had been resolved.
   const { contentText, mediaPending, interactiveReplyId } = describeMessageContent(message)
-
-  let replyToInternalId: string | null = null
-  if (message.context?.id) {
-    replyToInternalId = await lookupInternalIdByMetaId(message.context.id, conversation.id)
-    if (!replyToInternalId) {
-      console.warn('[webhook] reply context parent not found:', message.context.id)
-    }
-  }
 
   const ALLOWED_CONTENT_TYPES = new Set([
     'text', 'image', 'document', 'audio', 'video', 'location', 'template', 'interactive', 'event',
@@ -1995,93 +1941,254 @@ async function processMessage(
       ? 'image'
       : 'text'
 
-  const mentions = await resolveMentions(instanceName, message._raw)
+  const isReaction = message.type === 'reaction'
+  const mentions = isReaction ? null : await resolveMentions(instanceName, message._raw)
 
-  // "Has this contact ever written before?" — an existence check, not a
-  // count. The old `count: 'exact'` rescanned the whole thread on every
-  // inbound and grew with it, to decide a single boolean.
+  // ---- One round trip instead of four ----
   //
-  // Excluding *this* message's own id makes the answer identical whether
-  // the query reaches the DB before or after the INSERT below — which is
-  // what lets the two run concurrently and takes a full round trip off the
-  // critical path. (The IS NULL arm keeps rows whose message_id is null;
-  // a bare `neq` evaluates to NULL for those and would silently drop them,
-  // making a returning contact look brand new.)
-  const priorInboundQuery = supabaseAdmin()
-    .from('messages')
-    .select('id')
-    .eq('conversation_id', conversation.id)
-    .eq('sender_type', 'customer')
-    .or(`message_id.is.null,message_id.neq."${message.id}"`)
-    .limit(1)
+  // Contact, conversation, dedupe, message insert and the conversation
+  // counters, done in a single call — see migration 082. Supabase is
+  // remote, so those four separate calls were four lots of network
+  // latency on every message, and the measured cost was 1.2-4.2s against
+  // a concurrency budget every tenant shares.
+  //
+  // Returns null when the function is not installed, or when it declines
+  // to resolve something. The original path below then runs unchanged: a
+  // migration that has not been applied yet must never become a lost
+  // message, and this code can reach production before the SQL does.
+  //
+  // Skipped for a preset contact — that caller identified the sender by
+  // LID rather than by number, and the function resolves contacts by
+  // phone.
+  const fast = presetContact
+    ? null
+    : await ingestInbound(supabaseAdmin(), {
+        accountId,
+        userId: configOwnerUserId,
+        whatsappConfigId: whatsappConfigId ?? null,
+        // chat_numbers is recorded by handleInboundMessage for every
+        // event, group and status included, so the function leaves it be.
+        remoteJid: null,
+        phone: senderPhone,
+        contactName,
+        messageId: message.id,
+        contentType,
+        contentText,
+        mediaPending,
+        createdAt: new Date(parseInt(message.timestamp) * 1000).toISOString(),
+        interactiveReplyId,
+        mentions,
+        replyToMetaId: message.context?.id ?? null,
+        isHistory,
+        insertMessage: !isReaction,
+      })
 
-  // Insert first, fetch media after. `.select('id')` costs no extra round
-  // trip and gives the backfill an unambiguous row to target.
-  const insertQuery = supabaseAdmin()
-    .from('messages')
-    .insert({
-      conversation_id: conversation.id,
-      sender_type: 'customer',
-      content_type: contentType,
-      content_text: contentText,
-      media_url: null,
-      media_status: mediaPending ? 'pending' : null,
-      message_id: message.id,
-      status: 'delivered',
-      created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),
-      reply_to_message_id: replyToInternalId,
-      interactive_reply_id: interactiveReplyId,
-      mentions,
-    })
-    .select('id')
-    .single()
+  if (fast?.deduped) return
 
-  const [priorInbound, { data: insertedRow, error: msgError }] = await Promise.all([
-    priorInboundQuery,
-    insertQuery,
-  ])
+  /** Everything downstream needs, whichever path produced it. */
+  interface Resolved {
+    contactId: string
+    conversationId: string
+    wasCreated: boolean
+    pendingWrites: Promise<unknown> | null
+    insertedRowId: string
+    isFirstInbound: boolean
+  }
+  let resolved: Resolved
 
-  if (msgError) {
-    console.error('Error inserting message:', msgError)
-    if (contactOutcome.pendingWrites) await contactOutcome.pendingWrites
-    return
+  if (fast) {
+    // Enrichment the function deliberately does not do. The avatar it
+    // reports is the value from BEFORE the call, so this stays an honest
+    // "first time we have seen them" test rather than reading back a
+    // value this same call just wrote.
+    if (!fast.contactAvatarUrl) {
+      await syncContactAvatar(supabaseAdmin(), instanceName, fast.contactId, senderPhone)
+    }
+    if (fast.contactCreated) {
+      await syncContactProfile(supabaseAdmin(), instanceName, fast.contactId, senderPhone)
+    }
+    if (fast.conversationCreated) {
+      await dispatchWebhookEvent(supabaseAdmin(), accountId, 'conversation.created', {
+        conversation_id: fast.conversationId,
+        contact_id: fast.contactId,
+      })
+    }
+
+    // Reactions resolve a conversation but store no message.
+    if (isReaction) {
+      await handleReaction(message, fast.conversationId, fast.contactId)
+      return
+    }
+    if (!fast.messageRowId) {
+      console.error('[webhook] fast ingest stored no message row - MESSAGE DROPPED', message.id)
+      return
+    }
+
+    resolved = {
+      contactId: fast.contactId,
+      conversationId: fast.conversationId,
+      wasCreated: fast.contactCreated,
+      pendingWrites: null,
+      insertedRowId: fast.messageRowId as string,
+      isFirstInbound: fast.isFirstInbound,
+    }
+  } else {
+    // ---- Original path, unchanged ----
+    //
+    // Reached when migration 082 is not applied, when the function
+    // declines, or for a LID-identified sender. Its find-then-insert
+    // retry loops exist because Evolution delivers each message as its
+    // own POST, so a new contact's first burst runs this concurrently.
+    const contactOutcomeLegacy =
+      presetContact ??
+      (await findOrCreateContact(accountId, configOwnerUserId, senderPhone, contactName))
+    if (!contactOutcomeLegacy) return
+    const legacyContact = contactOutcomeLegacy.contact
+
+    // The contact just messaged us -> they are definitely on WhatsApp.
+    // Awaited (not a floating promise) because we're inside after(): a
+    // detached promise can be frozen before it writes. Idempotent.
+    if (legacyContact.is_on_whatsapp !== true) {
+      const { error: waErr } = await supabaseAdmin()
+        .from('contacts')
+        .update({ is_on_whatsapp: true, whatsapp_checked_at: new Date().toISOString() })
+        .eq('id', legacyContact.id)
+      if (waErr) console.error('[webhook] is_on_whatsapp update failed:', waErr.message)
+    }
+
+    if (!legacyContact.avatar_url) {
+      await syncContactAvatar(supabaseAdmin(), instanceName, legacyContact.id, senderPhone)
+    }
+    if (contactOutcomeLegacy.wasCreated) {
+      await syncContactProfile(supabaseAdmin(), instanceName, legacyContact.id, senderPhone)
+    }
+
+    const convResult = await findOrCreateConversation(
+      accountId,
+      configOwnerUserId,
+      legacyContact.id,
+      whatsappConfigId,
+    )
+    if (!convResult) {
+      if (contactOutcomeLegacy.pendingWrites) await contactOutcomeLegacy.pendingWrites
+      return
+    }
+    const legacyConversation = convResult.conversation
+
+    if (convResult.created) {
+      await dispatchWebhookEvent(supabaseAdmin(), accountId, 'conversation.created', {
+        conversation_id: legacyConversation.id,
+        contact_id: legacyContact.id,
+      })
+    }
+
+    if (isReaction) {
+      await handleReaction(message, legacyConversation.id, legacyContact.id)
+      if (contactOutcomeLegacy.pendingWrites) await contactOutcomeLegacy.pendingWrites
+      return
+    }
+
+    let replyToInternalId: string | null = null
+    if (message.context?.id) {
+      replyToInternalId = await lookupInternalIdByMetaId(message.context.id, legacyConversation.id)
+      if (!replyToInternalId) {
+        console.warn('[webhook] reply context parent not found:', message.context.id)
+      }
+    }
+
+    // "Has this contact ever written before?" - an existence check, not a
+    // count. Excluding *this* message's own id makes the answer identical
+    // whether the query reaches the DB before or after the INSERT below,
+    // which is what lets the two run concurrently.
+    const priorInboundQuery = supabaseAdmin()
+      .from('messages')
+      .select('id')
+      .eq('conversation_id', legacyConversation.id)
+      .eq('sender_type', 'customer')
+      .or(`message_id.is.null,message_id.neq."${message.id}"`)
+      .limit(1)
+
+    const insertQuery = supabaseAdmin()
+      .from('messages')
+      .insert({
+        conversation_id: legacyConversation.id,
+        sender_type: 'customer',
+        content_type: contentType,
+        content_text: contentText,
+        media_url: null,
+        media_status: mediaPending ? 'pending' : null,
+        message_id: message.id,
+        status: 'delivered',
+        created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),
+        reply_to_message_id: replyToInternalId,
+        interactive_reply_id: interactiveReplyId,
+        mentions,
+      })
+      .select('id')
+      .single()
+
+    const [priorInbound, { data: insertedRow, error: msgError }] = await Promise.all([
+      priorInboundQuery,
+      insertQuery,
+    ])
+
+    if (msgError) {
+      console.error('Error inserting message:', msgError)
+      if (contactOutcomeLegacy.pendingWrites) await contactOutcomeLegacy.pendingWrites
+      return
+    }
+
+    if (priorInbound.error) {
+      console.error('[webhook] prior-inbound check failed:', priorInbound.error.message)
+    }
+
+    const { error: convError } = await supabaseAdmin()
+      .from('conversations')
+      .update({
+        last_message_text: contentText || `[${message.type}]`,
+        last_message_at: new Date().toISOString(),
+        unread_count: (legacyConversation.unread_count || 0) + 1,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', legacyConversation.id)
+    if (convError) console.error('Error updating conversation:', convError)
+
+    resolved = {
+      contactId: legacyContact.id,
+      conversationId: legacyConversation.id,
+      wasCreated: contactOutcomeLegacy.wasCreated,
+      pendingWrites: contactOutcomeLegacy.pendingWrites ?? null,
+      insertedRowId: insertedRow.id,
+      // On error, fall back to "not the first" - re-running a
+      // first-contact flow for an existing conversation is the worse of
+      // the two mistakes.
+      isFirstInbound: !priorInbound.error && (priorInbound.data?.length ?? 0) === 0,
+    }
   }
 
-  if (priorInbound.error) {
-    console.error('[webhook] prior-inbound check failed:', priorInbound.error.message)
+  // Shaped so everything below this point reads exactly as it did before.
+  const contactRecord = { id: resolved.contactId }
+  const conversation = { id: resolved.conversationId }
+  const contactOutcome = {
+    wasCreated: resolved.wasCreated,
+    pendingWrites: resolved.pendingWrites,
   }
-  // On error, fall back to "not the first" — re-running a first-contact
-  // flow for an existing conversation is the worse of the two mistakes.
-  const isFirstInboundMessage =
-    !priorInbound.error && (priorInbound.data?.length ?? 0) === 0
+  const isFirstInboundMessage = resolved.isFirstInbound
 
-  // Kick the media fetch off now so it overlaps the conversation update,
-  // flows and automations below — none of which read media_url. It is
-  // awaited before this function returns (see the end of processMessage),
-  // so `after()` still keeps the process alive until it lands. The catch
-  // is attached here, at creation, so a rejection can never surface as an
-  // unhandled rejection during the awaits in between.
+  // Kick the media fetch off now so it overlaps the flows and automations
+  // below - none of which read media_url. It is awaited before this
+  // function returns, so after() keeps the process alive until it lands.
+  // The catch is attached here, at creation, so a rejection can never
+  // surface as an unhandled rejection during the awaits in between.
   const mediaBackfill = mediaPending
     ? backfillMessageMedia({
-        rowId: insertedRow.id,
+        rowId: resolved.insertedRowId,
         instanceName,
         message,
       }).catch((err) =>
         console.error('[webhook] media backfill failed:', err instanceof Error ? err.message : err),
       )
     : null
-
-  const { error: convError } = await supabaseAdmin()
-    .from('conversations')
-    .update({
-      last_message_text: contentText || `[${message.type}]`,
-      last_message_at: new Date().toISOString(),
-      unread_count: (conversation.unread_count || 0) + 1,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', conversation.id)
-  if (convError) console.error('Error updating conversation:', convError)
-
   await flagBroadcastReplyIfAny(accountId, contactRecord.id)
 
   // Flow runner dispatch. If the runner consumes the message we suppress
