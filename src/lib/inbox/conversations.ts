@@ -47,16 +47,28 @@ export interface ContactFilters {
   tagIds: string[];
   /** Exact company match, or null for no company filter. */
   company: string | null;
+  /**
+   * Show only contacts marked as business.
+   *
+   * One-way on purpose. There is no "personal only" setting, because
+   * `is_business` is not a classification of every contact — it is a list
+   * someone has curated. Unmarked means "nobody has said", which lumps
+   * genuine personal chats together with contacts not yet got to, and a
+   * filter promising "personal" would quietly hide new customers in with
+   * the family.
+   */
+  businessOnly?: boolean;
 }
 
 /**
  * Whether a conversation passes the contact-based Inbox filters (issue #272).
- * Empty `tagIds` and null `company` are no-ops, so the default (no filters)
- * always matches. Tags use OR logic, consistent with Broadcast audiences.
+ * Empty `tagIds`, null `company` and unset `businessOnly` are no-ops, so the
+ * default (no filters) always matches. Tags use OR logic, consistent with
+ * Broadcast audiences.
  */
 export function matchesContactFilters(
   conversation: Conversation,
-  { tagIds, company }: ContactFilters,
+  { tagIds, company, businessOnly = false }: ContactFilters,
 ): boolean {
   if (tagIds.length > 0) {
     const contactTagIds = conversation.contact?.tags ?? [];
@@ -64,6 +76,13 @@ export function matchesContactFilters(
   }
 
   if (company !== null && conversation.contact?.company?.trim() !== company) {
+    return false;
+  }
+
+  // A conversation with no contact row cannot be a business contact. It
+  // is excluded rather than kept: this filter is used to clear the decks,
+  // and letting unattributed chats through would defeat the point.
+  if (businessOnly && conversation.contact?.is_business !== true) {
     return false;
   }
 

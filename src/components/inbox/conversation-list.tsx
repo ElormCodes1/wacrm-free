@@ -58,10 +58,22 @@ const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = [
 
 // Chat-type filter: individual contacts vs WhatsApp groups (a group is a
 // contact with is_group = true), or all.
-type ContactType = "all" | "individuals" | "groups";
+//
+// "Business" lives here rather than in its own control because it answers
+// the same question — which chats am I looking at — and these are
+// mutually exclusive in practice. A linked WhatsApp number is a PERSONAL
+// number, so family and group chats sit in the inbox beside customers;
+// this is how someone clears the decks and sees only the people they
+// actually do business with.
+//
+// There is deliberately no "Personal" counterpart. is_business is a
+// curated list, not a classification of everyone: unmarked means "nobody
+// has said yet", which would lump new customers in with the family.
+type ContactType = "all" | "individuals" | "groups" | "business";
 
 const CONTACT_TYPE_OPTIONS: { label: string; value: ContactType }[] = [
   { label: "All chats", value: "all" },
+  { label: "Business", value: "business" },
   { label: "Individuals", value: "individuals" },
   { label: "Groups", value: "groups" },
 ];
@@ -274,12 +286,15 @@ export function ConversationList({
       result = result.filter((c) => c.contact?.is_group);
     }
 
-    // Contact-based filters (tags via OR logic, exact company match).
-    if (selectedTagIds.length > 0 || selectedCompany !== null) {
+    // Contact-based filters (tags via OR logic, exact company match,
+    // business-only).
+    const businessOnly = contactType === "business";
+    if (selectedTagIds.length > 0 || selectedCompany !== null || businessOnly) {
       result = result.filter((c) =>
         matchesContactFilters(c, {
           tagIds: selectedTagIds,
           company: selectedCompany,
+          businessOnly,
         })
       );
     }

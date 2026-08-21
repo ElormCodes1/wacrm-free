@@ -143,3 +143,71 @@ describe("normalizeConversation", () => {
     expect(normalizeConversation(raw).contact).toBeNull();
   });
 });
+
+/**
+ * The business filter exists because a linked WhatsApp number is a
+ * PERSONAL number: family and group chats land in the inbox beside real
+ * customers, and only a human can say which is which.
+ */
+describe("matchesContactFilters — business", () => {
+  const none = { tagIds: [], company: null };
+
+  it("is a no-op when not asked for", () => {
+    const personal = makeConversation({ is_business: false });
+    expect(matchesContactFilters(personal, none)).toBe(true);
+    expect(matchesContactFilters(personal, { ...none, businessOnly: false })).toBe(
+      true,
+    );
+  });
+
+  it("keeps marked contacts and drops unmarked ones", () => {
+    expect(
+      matchesContactFilters(makeConversation({ is_business: true }), {
+        ...none,
+        businessOnly: true,
+      }),
+    ).toBe(true);
+    expect(
+      matchesContactFilters(makeConversation({ is_business: false }), {
+        ...none,
+        businessOnly: true,
+      }),
+    ).toBe(false);
+  });
+
+  /**
+   * Rows predating the column read as null/undefined. They are unmarked,
+   * not business — treating "nobody has said" as a yes would leave the
+   * filter showing the whole inbox on day one and look like it is broken.
+   */
+  it("treats an unset flag as not business", () => {
+    for (const value of [null, undefined]) {
+      expect(
+        matchesContactFilters(makeConversation({ is_business: value }), {
+          ...none,
+          businessOnly: true,
+        }),
+      ).toBe(false);
+    }
+  });
+
+  it("drops a conversation with no contact row", () => {
+    expect(
+      matchesContactFilters(makeConversation(null), {
+        ...none,
+        businessOnly: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("combines with the other filters rather than replacing them", () => {
+    const conv = makeConversation({ is_business: true, company: "Acme" });
+    expect(
+      matchesContactFilters(conv, {
+        tagIds: [],
+        company: "Other",
+        businessOnly: true,
+      }),
+    ).toBe(false);
+  });
+});

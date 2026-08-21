@@ -29,6 +29,7 @@ import {
   Star,
   ArrowLeft,
   MessageSquare,
+  Briefcase,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -171,6 +172,51 @@ export function ContactSidebar({
       setTags(mapped);
     }
   }, [contact]);
+
+  /**
+   * Business flag: the prop is the truth, with a local override for the
+   * moment between clicking and the parent hearing about it.
+   *
+   * The override carries the contact id it belongs to, so switching
+   * contacts discards it automatically. That is why this is derived
+   * rather than mirrored into state by an effect — an effect would have
+   * to re-sync on every contact change, which is both a cascading render
+   * and a race: click, switch contact fast, and the previous contact's
+   * value lands on the new one.
+   */
+  const [businessOverride, setBusinessOverride] = useState<{
+    contactId: string;
+    value: boolean;
+  } | null>(null);
+  const [savingBusiness, setSavingBusiness] = useState(false);
+  const isBusiness =
+    businessOverride && businessOverride.contactId === contact?.id
+      ? businessOverride.value
+      : contact?.is_business === true;
+
+  const toggleBusiness = useCallback(async () => {
+    if (!contact) return;
+    const next = !isBusiness;
+    // Optimistic: a switch that lags behind the finger reads as broken.
+    setBusinessOverride({ contactId: contact.id, value: next });
+    setSavingBusiness(true);
+    const supabase = createClient();
+    const { error } = await supabase
+      .from('contacts')
+      .update({ is_business: next })
+      .eq('id', contact.id);
+    setSavingBusiness(false);
+    if (error) {
+      // Put it back. Leaving it flipped would tell someone their inbox is
+      // filtered when it is not.
+      setBusinessOverride({ contactId: contact.id, value: !next });
+      toast.error('Could not update this contact');
+      return;
+    }
+    toast.success(
+      next ? 'Marked as a business contact' : 'No longer a business contact'
+    );
+  }, [contact, isBusiness]);
 
   const toggleTask = useCallback(
     async (task: Task) => {
@@ -447,6 +493,45 @@ export function ContactSidebar({
                     <span className="truncate">{contact.email}</span>
                   </div>
                 )}
+
+                {/*
+                  Business contact toggle.
+
+                  A linked WhatsApp number is a personal one, so the inbox
+                  mixes customers with family. Nothing in a message can
+                  tell those apart — only a person can — and this is where
+                  they say so. It drives the inbox's "Business" filter.
+                */}
+                <button
+                  onClick={toggleBusiness}
+                  disabled={savingBusiness}
+                  aria-pressed={isBusiness}
+                  className="hover:bg-muted flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors disabled:opacity-50"
+                >
+                  <Briefcase
+                    className={`h-4 w-4 ${
+                      isBusiness ? 'text-primary' : 'text-muted-foreground'
+                    }`}
+                  />
+                  <span
+                    className={`flex-1 text-left ${
+                      isBusiness ? 'text-foreground' : 'text-muted-foreground'
+                    }`}
+                  >
+                    Business contact
+                  </span>
+                  <span
+                    className={`flex h-4 w-7 items-center rounded-full px-0.5 transition-colors ${
+                      isBusiness ? 'bg-primary' : 'bg-muted-foreground/30'
+                    }`}
+                  >
+                    <span
+                      className={`h-3 w-3 rounded-full bg-white transition-transform ${
+                        isBusiness ? 'translate-x-3' : 'translate-x-0'
+                      }`}
+                    />
+                  </span>
+                </button>
               </div>
 
               {/* Divider */}

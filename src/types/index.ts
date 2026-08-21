@@ -110,6 +110,16 @@ export interface Contact {
   status_text?: string | null;
   /** Fetched WhatsApp business profile (category, website, hours…). */
   business_profile?: Record<string, unknown> | null;
+  /**
+   * Manually marked as someone this account does business with.
+   *
+   * A human judgement, and necessarily so — nothing in a message tells a
+   * customer apart from a cousin. Not to be confused with
+   * `business_profile` above, which is WhatsApp's record of the CONTACT
+   * running a Business account: customers are usually ordinary personal
+   * accounts, and relatives sometimes run shops.
+   */
+  is_business?: boolean | null;
   /** Set when the contact is blocked on WhatsApp. */
   blocked_at?: string | null;
   /** True when this "contact" is actually a WhatsApp group (phone holds
