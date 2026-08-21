@@ -30,6 +30,8 @@ import type {
 import { MetricCard } from '@/components/dashboard/metric-card'
 import { SkeletonCard } from '@/components/dashboard/skeleton'
 import { QuickActions } from '@/components/dashboard/quick-actions'
+import { OnboardingGate } from '@/components/onboarding/onboarding-gate'
+import { SetupChecklist } from '@/components/onboarding/setup-checklist'
 import { ConversationsChart } from '@/components/dashboard/conversations-chart'
 import { PipelineDonut } from '@/components/dashboard/pipeline-donut'
 import dynamic from 'next/dynamic'
@@ -224,6 +226,12 @@ export function DashboardClient({ initial }: { initial: DashboardInitialData }) 
           </>
         )}
       </div>
+
+      {/* First run: the walkthrough, then the short list of things that
+          actually have to happen before any of this shows real numbers.
+          Both remove themselves once done. */}
+      <OnboardingGate />
+      <SetupChecklist />
 
       {/* Quick actions */}
       <QuickActions />

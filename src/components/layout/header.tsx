@@ -3,7 +3,7 @@
 import { CompanyLink } from "@/components/tenancy/company-link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
-import { LogOut, Menu, Settings as SettingsIcon, User } from "lucide-react";
+import { HelpCircle, LogOut, Menu, Settings as SettingsIcon, User } from "lucide-react";
 import {
   Avatar,
   AvatarFallback,
@@ -136,6 +136,18 @@ export function Header({ onOpenSidebar }: HeaderProps) {
           >
             <SettingsIcon className="size-4" />
             Settings
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            render={
+              <CompanyLink
+                to="dashboard"
+                query={{ guide: 1 }}
+                className="text-popover-foreground focus:bg-accent focus:text-accent-foreground"
+              />
+            }
+          >
+            <HelpCircle className="size-4" />
+            Show walkthrough
           </DropdownMenuItem>
           <DropdownMenuSeparator className="bg-border" />
           <DropdownMenuItem
