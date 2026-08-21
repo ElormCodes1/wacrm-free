@@ -1,5 +1,5 @@
 import { NextResponse, after } from 'next/server'
-import { Semaphore } from '@/lib/concurrency/semaphore'
+import { FairQueue } from '@/lib/concurrency/fair-queue'
 import { historyHoursFromEnv, withinHistoryWindow } from '@/lib/whatsapp/history-window'
 import { createClient } from '@supabase/supabase-js'
 import {
@@ -164,8 +164,32 @@ function limitFromEnv(name: string, fallback: number): number {
   return Number.isInteger(n) && n >= 1 ? n : fallback
 }
 
-const eventQueue = new Semaphore(limitFromEnv('WHATSAPP_EVENT_CONCURRENCY', 2))
-const mediaQueue = new Semaphore(limitFromEnv('WHATSAPP_MEDIA_CONCURRENCY', 1))
+// Keyed by INSTANCE, which is one tenant's WhatsApp line.
+//
+// A single global limit protects the process but not the customers. With
+// many accounts posting into the same webhook, a plain FIFO queue lets one
+// busy line fill every slot while everybody else waits behind it — the
+// tenant who notices being the one who did nothing wrong.
+//
+// global: total work in flight, the number that keeps page requests
+//   answerable. Raised from the original flat 2 because that figure was
+//   chosen to protect a single process, not to serve a growing number of
+//   tenants, and with per-tenant caps in place a larger pool no longer
+//   means one account can monopolise it.
+//
+// perKey: the blast radius of any one tenant. Deliberately small — a
+//   burst from one account queues against ITSELF and leaves the rest of
+//   the pool free.
+const eventQueue = new FairQueue(
+  limitFromEnv('WHATSAPP_EVENT_CONCURRENCY', 8),
+  limitFromEnv('WHATSAPP_EVENT_CONCURRENCY_PER_NUMBER', 2),
+)
+// Media is slower and unpredictable in size, so it gets its own pool and
+// one slot per tenant: nobody's video may delay anybody's text.
+const mediaQueue = new FairQueue(
+  limitFromEnv('WHATSAPP_MEDIA_CONCURRENCY', 3),
+  limitFromEnv('WHATSAPP_MEDIA_CONCURRENCY_PER_NUMBER', 1),
+)
 
 // ============================================================
 // POST — receive Evolution events
@@ -258,7 +282,7 @@ export async function POST(request: Request) {
     // WhatsApp's send timestamp, in seconds. Absent on non-message events.
     const sentAt = messageTimestampOf(body)
     try {
-      await eventQueue.run(async () => {
+      await eventQueue.run(body.instance ?? 'unknown', async () => {
         const startedAt = Date.now()
         // Queue time, kept SEPARATE from work time. Rolled together they
         // hide the thing worth knowing: whether an event was slow because
@@ -276,7 +300,9 @@ export async function POST(request: Request) {
             console.warn(
               `[webhook] ${body.event ?? '?'} ${body.instance ?? '?'} took ${took}ms` +
                 (waited > 100 ? `, queued ${waited}ms` : '') +
-                (eventQueue.queued > 0 ? `, ${eventQueue.queued} waiting` : '') +
+                (eventQueue.queued > 0
+                    ? `, ${eventQueue.queued} waiting across ${eventQueue.waitingKeys} number(s)`
+                    : '') +
                 (behind === null
                   ? ''
                   : `, arrived ${Math.round(behind / 1000)}s after it was sent`),
@@ -2233,7 +2259,7 @@ function deferMedia(args: {
   after(async () => {
     try {
       // Its own queue: a large file must never hold up the next message.
-      await mediaQueue.run(() => backfillMessageMedia(args))
+      await mediaQueue.run(args.instanceName, () => backfillMessageMedia(args))
     } catch (err) {
       // A message with unreachable media is still a message. Log it and
       // leave the row at 'pending' rather than failing the delivery.
