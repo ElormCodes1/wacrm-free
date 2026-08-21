@@ -91,9 +91,17 @@ export async function GET(request: Request) {
       const phone = (jidToPhone(jid) ?? '').replace(/\D/g, '')
       if (!phone) continue
 
+      // Address-book name FIRST, pushName second.
+      //
+      // `name` is what the phone's owner saved this person as; `pushName`
+      // is what the person calls themselves on WhatsApp. For picking
+      // someone out of your own contacts, the name you gave them is the
+      // one you will recognise — and it is stable, where a pushName
+      // changes whenever they edit their profile.
       const name: string | null =
-        (typeof entry?.pushName === 'string' && entry.pushName.trim()) ||
         (typeof entry?.name === 'string' && entry.name.trim()) ||
+        (typeof entry?.pushName === 'string' && entry.pushName.trim()) ||
+        (typeof entry?.verifiedName === 'string' && entry.verifiedName.trim()) ||
         null
 
       const existing = byPhone.get(phone)

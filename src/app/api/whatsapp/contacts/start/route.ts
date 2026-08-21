@@ -18,6 +18,7 @@ import { NextResponse } from 'next/server'
 
 import { createClient } from '@/lib/supabase/server'
 import { findOrCreateConversation } from '@/lib/whatsapp/find-or-create-conversation'
+import { betterName } from '@/lib/whatsapp/contact-name'
 
 export async function POST(request: Request) {
   try {
@@ -94,11 +95,19 @@ export async function POST(request: Request) {
       } else {
         contactId = created.id as string
       }
-    } else if (name && !existing?.name) {
-      // Fill in a name we did not have. Never overwrite one that exists:
-      // whatever is stored was more likely set deliberately than the
-      // pushName the address book happens to carry.
-      await supabase.from('contacts').update({ name }).eq('id', contactId)
+    } else {
+      // Fill in a name we did not really have.
+      //
+      // `!existing.name` is NOT the test, because contacts created from
+      // inbound messages store the phone number in `name` when WhatsApp
+      // sent no pushName — which in production is most of them. Checking
+      // for emptiness would see a name, decline the update, and leave the
+      // digits in place forever, so picking someone out of the address
+      // book would never apply the name you have them saved under.
+      const improved = betterName(existing?.name, name, phone)
+      if (improved) {
+        await supabase.from('contacts').update({ name: improved }).eq('id', contactId)
+      }
     }
 
     const conversationId = await findOrCreateConversation(

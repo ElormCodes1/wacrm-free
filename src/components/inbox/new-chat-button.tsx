@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Search, Loader2, UserRound } from 'lucide-react';
+import { Plus, Search, Loader2, UserRound, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
 import {
@@ -39,6 +39,7 @@ export function NewChatButton() {
   const [reason, setReason] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [starting, setStarting] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const companyPath = useCompanyPath();
 
   useEffect(() => {
@@ -103,6 +104,39 @@ export function NewChatButton() {
       toast.error('Could not open that chat');
     } finally {
       setStarting(null);
+    }
+  }
+
+  /**
+   * Put names to the numbers already in the inbox.
+   *
+   * Contacts created from inbound messages keep the phone number as their
+   * name whenever WhatsApp sent no pushName, which is most of them — so
+   * the inbox reads as a list of digits while the phone those messages
+   * came from knows exactly who these people are. Offered here because
+   * this dialog is already the place where contact names are the subject.
+   */
+  async function refreshNames() {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      const res = await fetch('/api/whatsapp/contacts/refresh-names', {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error ?? 'Could not update names');
+        return;
+      }
+      toast.success(
+        data.updated > 0
+          ? `Named ${data.updated} contact${data.updated === 1 ? '' : 's'}`
+          : 'Every contact already has a name',
+      );
+    } catch {
+      toast.error('Could not update names');
+    } finally {
+      setRefreshing(false);
     }
   }
 
@@ -183,6 +217,19 @@ export function NewChatButton() {
               </ul>
             )}
           </div>
+
+          <button
+            onClick={refreshNames}
+            disabled={refreshing}
+            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 self-start text-xs disabled:opacity-50"
+          >
+            <RefreshCw
+              className={`h-3 w-3 ${refreshing ? 'animate-spin' : ''}`}
+            />
+            {refreshing
+              ? 'Updating names…'
+              : 'Name existing chats from this phone'}
+          </button>
         </DialogContent>
       </Dialog>
     </>
