@@ -332,6 +332,44 @@ export async function setWebhook(args: {
   })
 }
 
+/**
+ * What the gateway actually has stored for an instance.
+ *
+ * setWebhook returning 200 means the call was accepted, not that the
+ * settings took — and the difference is the whole failure: a sweep
+ * reported the webhook re-applied while the gateway carried on posting
+ * without the secret header. Reading it back is the only honest check.
+ *
+ * Returns null when the instance is unknown to the gateway, which is a
+ * real answer: it says the row points at nothing.
+ */
+export async function findWebhook(instanceName: string): Promise<{
+  enabled: boolean
+  url: string | null
+  headerNames: string[]
+} | null> {
+  try {
+    const res = (await evolutionFetch(
+      `/webhook/find/${encodeURIComponent(instanceName)}`,
+      { method: 'GET' },
+    )) as {
+      enabled?: boolean
+      url?: string
+      headers?: Record<string, string>
+    } | null
+    if (!res) return null
+    return {
+      enabled: res.enabled ?? false,
+      url: res.url ?? null,
+      // NAMES only. The values are the shared secret, and a diagnostic
+      // that leaks the credential it is checking is worse than none.
+      headerNames: Object.keys(res.headers ?? {}),
+    }
+  } catch {
+    return null
+  }
+}
+
 // ============================================================
 // Helpers
 // ============================================================

@@ -124,9 +124,24 @@ export async function POST(request: Request) {
       // the health sweep re-applies the webhook. Nothing is processed
       // either way — this is not weaker authentication, it is a failure
       // mode a customer's data can survive.
+      // Name the instance and the event. "A request was rejected" is not a
+      // diagnosis: it cannot distinguish a paired line whose header is
+      // stale from an orphaned instance nobody owns any more, and those
+      // want opposite responses. Safe to read the body here because this
+      // branch returns without processing it.
+      let who = 'unknown'
+      try {
+        const peek = JSON.parse(await request.text()) as {
+          instance?: string
+          event?: string
+        }
+        who = `${peek.instance ?? 'unknown'} (${peek.event ?? 'no event'})`
+      } catch {
+        /* an unreadable body is itself worth knowing about */
+      }
       console.warn(
-        '[webhook] rejected request with bad x-evolution-secret — gateway is ' +
-          'posting a stale header; the health sweep re-applies it',
+        `[webhook] rejected ${who}: ${got === null ? 'no' : 'wrong'} ` +
+          'x-evolution-secret — the health sweep re-applies it',
       )
       return NextResponse.json(
         { error: 'Webhook secret mismatch; retry shortly' },

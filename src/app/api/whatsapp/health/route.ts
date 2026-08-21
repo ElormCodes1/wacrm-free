@@ -24,6 +24,7 @@ import {
   clearAliveCache,
   restartInstance,
   setWebhook,
+  findWebhook,
 } from '@/lib/whatsapp/provider/evolution'
 import { appWebhookConfig } from '@/lib/whatsapp/provider/config'
 import { getOperator } from '@/lib/operator/session'
@@ -40,6 +41,12 @@ interface NumberHealth {
   healed: boolean
   /** Whether this sweep successfully re-applied the webhook settings. */
   webhookReasserted?: boolean
+  /**
+   * What the GATEWAY reports storing, read back after re-applying — the
+   * only evidence that the settings took. `secretHeader` is presence, not
+   * the value. null means the gateway does not know this instance.
+   */
+  webhook?: { enabled: boolean; url: string | null; secretHeader: boolean } | null
 }
 
 /**
@@ -57,15 +64,23 @@ interface NumberHealth {
  * sweep costs one call per number and makes the mismatch heal itself
  * instead of needing somebody to notice.
  */
-async function reassertWebhook(instanceName: string): Promise<boolean> {
+async function reassertWebhook(instanceName: string): Promise<{
+  ok: boolean
+  stored: Awaited<ReturnType<typeof findWebhook>>
+}> {
+  let ok = false
   try {
     await setWebhook({ instanceName, webhook: appWebhookConfig() })
-    return true
+    ok = true
   } catch {
     // Best effort: a gateway that will not take the webhook must not stop
     // the rest of the sweep from reporting.
-    return false
   }
+  // Then READ IT BACK. The first version of this trusted the 200 and
+  // reported the webhook re-applied while the gateway went on posting
+  // without the header — which is exactly the kind of confident, wrong
+  // answer that sent this bug undiagnosed for a day.
+  return { ok, stored: await findWebhook(instanceName) }
 }
 
 async function checkNumber(row: {
@@ -101,9 +116,21 @@ async function runHealthCheck(
     if (!row.instance_name) continue
     // Before anything else: make the gateway's webhook match ours. A dead
     // socket is visible; a stale secret is not.
-    const webhookReasserted = await reassertWebhook(row.instance_name)
+    const { ok: webhookReasserted, stored } = await reassertWebhook(row.instance_name)
     const health = await checkNumber(row)
-    results.push({ ...health, webhookReasserted })
+    results.push({
+      ...health,
+      webhookReasserted,
+      webhook: stored
+        ? {
+            enabled: stored.enabled,
+            url: stored.url,
+            secretHeader: stored.headerNames.some(
+              (h) => h.toLowerCase() === 'x-evolution-secret',
+            ),
+          }
+        : null,
+    })
 
     // Keep the stored column honest — it is what Settings and the older
     // code paths read, and letting it drift is how a dead line reads as
