@@ -33,6 +33,27 @@ interface UseRealtimeOptions {
   accountId?: string | null;
 }
 
+/**
+ * Whether the tenant filter on `messages` works against this database.
+ *
+ * The filter needs `messages.account_id`, added by migration 085. If the
+ * code is deployed before that migration is applied — which happened, and
+ * took live inboxes silent until it was noticed — Realtime cannot bind a
+ * filter to a column that does not exist and the subscription errors. The
+ * inbox then receives nothing, with no failure anyone would see except
+ * messages quietly not arriving.
+ *
+ * So a bind failure downgrades to the unfiltered subscription for the
+ * rest of the page's life: less efficient, which is a cost, versus not
+ * working at all, which is not a trade. Module-level, so one tab probes
+ * once rather than on every remount, and a reload picks up the migration
+ * the moment it lands.
+ *
+ * This matters beyond our own deploy order — this project is self-hosted
+ * by others, who will apply migrations on their own schedule.
+ */
+let messagesFilterSupported = true;
+
 export function useRealtime({
   channelName,
   onMessageEvent,
@@ -42,6 +63,10 @@ export function useRealtime({
 }: UseRealtimeOptions) {
   const channelRef = useRef<RealtimeChannel | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  // Bumped to re-run the effect after a filtered bind fails, so the
+  // fallback subscription is opened immediately rather than on the next
+  // navigation.
+  const [bindAttempt, setBindAttempt] = useState(0);
 
   // Store latest callbacks in refs to avoid re-subscribing when the
   // parent re-renders with fresh closures. Assigned inside an effect
@@ -72,8 +97,11 @@ export function useRealtime({
           table: "messages",
           // messages carries a denormalised account_id purely so this
           // filter is possible — postgres_changes cannot follow
-          // conversation_id to the parent. See migration 085.
-          filter: `account_id=eq.${accountId}`,
+          // conversation_id to the parent. See migration 085, and
+          // messagesFilterSupported above for what happens without it.
+          ...(messagesFilterSupported
+            ? { filter: `account_id=eq.${accountId}` }
+            : {}),
         },
         (payload) => {
           onMessageRef.current?.({
@@ -101,6 +129,17 @@ export function useRealtime({
       )
       .subscribe((status) => {
         setIsConnected(status === "SUBSCRIBED");
+
+        // A bind error while filtered almost always means the column is
+        // missing. Retry unfiltered rather than leave the inbox silent.
+        if (status === "CHANNEL_ERROR" && messagesFilterSupported) {
+          console.warn(
+            "[realtime] tenant-filtered subscription failed — falling back to " +
+              "unfiltered. Apply migration 085 (messages.account_id) to restore it.",
+          );
+          messagesFilterSupported = false;
+          setBindAttempt((n) => n + 1);
+        }
       });
 
     channelRef.current = channel;
@@ -110,7 +149,7 @@ export function useRealtime({
       channelRef.current = null;
       setIsConnected(false);
     };
-  }, [channelName, enabled, accountId]);
+  }, [channelName, enabled, accountId, bindAttempt]);
 
   const unsubscribe = useCallback(() => {
     if (channelRef.current) {
