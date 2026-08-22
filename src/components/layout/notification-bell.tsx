@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CompanyLink } from "@/components/tenancy/company-link";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/hooks/use-auth";
 import { useUnreadNotifications } from "@/hooks/use-unread-notifications";
 import type { Notification } from "@/types";
 import { Bell, CheckCheck, UserPlus } from "lucide-react";
@@ -25,6 +26,10 @@ const TYPE_ICON: Record<Notification["type"], typeof Bell> = {
  * Reuses the same query + realtime + mark-read logic as the full page.
  */
 export function NotificationBell() {
+  // Notifications are addressed to a person, so the recipient is the
+  // tightest filter available. Unfiltered, Realtime evaluates this
+  // subscriber's policies against every notification on the platform.
+  const { user: authUser } = useAuth();
   const router = useRouter();
   const unread = useUnreadNotifications();
   const [open, setOpen] = useState(false);
@@ -47,12 +52,23 @@ export function NotificationBell() {
 
   // Keep the dropdown list live (new assignments, cross-tab reads).
   useEffect(() => {
+    if (!authUser?.id) return;
     const supabase = createClient();
     const channel = supabase
       .channel("notification-bell")
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "notifications" },
+        {
+          event: "*",
+          schema: "public",
+          table: "notifications",
+          // Notifications are addressed to a person, so the recipient is
+          // the tightest filter there is. Unfiltered, Realtime evaluates
+          // this subscriber's policies against every notification on the
+          // platform — cost that grows with how many customers are signed
+          // in, not with how many notifications they get.
+          filter: `user_id=eq.${authUser?.id}`,
+        },
         () => {
           load();
         },
@@ -61,7 +77,10 @@ export function NotificationBell() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [load]);
+    // authUser?.id belongs here: the effect bails out above until the
+  // user is known, so without it in the deps the bell would never
+  // subscribe at all once they arrive.
+  }, [load, authUser?.id]);
 
   const markRead = useCallback(async (id: string) => {
     setItems((prev) =>

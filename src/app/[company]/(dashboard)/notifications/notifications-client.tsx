@@ -22,6 +22,10 @@ export function NotificationsClient({
 }: {
   initial: Notification[];
 }) {
+  // Notifications are addressed to a person, so the recipient is the
+  // tightest filter available. Unfiltered, Realtime evaluates this
+  // subscriber's policies against every notification on the platform.
+  const { user: authUser } = useAuth();
   const router = useRouter();
   const { accountId } = useAuth();
   // Seeded from the server so the first paint shows the list; the mount
@@ -56,12 +60,23 @@ export function NotificationsClient({
   // Realtime — new assignments appear without a refresh, and a
   // "mark all read" fired from another tab/device stays in sync here.
   useEffect(() => {
+    if (!authUser?.id) return;
     const supabase = createClient();
     const channel = supabase
       .channel("notifications-page")
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "notifications" },
+        {
+          event: "*",
+          schema: "public",
+          table: "notifications",
+          // Notifications are addressed to a person, so the recipient is
+          // the tightest filter there is. Unfiltered, Realtime evaluates
+          // this subscriber's policies against every notification on the
+          // platform — cost that grows with how many customers are signed
+          // in, not with how many notifications they get.
+          filter: `user_id=eq.${authUser?.id}`,
+        },
         (payload) => {
           if (payload.eventType === "INSERT") {
             const row = payload.new as Notification;
@@ -89,7 +104,8 @@ export function NotificationsClient({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  // Depends on the user: the effect bails out until it is known.
+  }, [authUser?.id]);
 
   const markRead = useCallback(
     async (id: string) => {

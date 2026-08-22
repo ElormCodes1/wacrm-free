@@ -16,6 +16,21 @@ interface UseRealtimeOptions {
   onMessageEvent?: (event: RealtimeEvent<Message>) => void;
   onConversationEvent?: (event: RealtimeEvent<Conversation>) => void;
   enabled?: boolean;
+  /**
+   * Scope the subscription to one tenant.
+   *
+   * Without it these bindings watch EVERY row in the table and rely on
+   * row-level security to discard what this user may not see — which
+   * means Realtime evaluates policies per subscriber, per row. The cost
+   * then grows with how many customers are signed in rather than with how
+   * busy any one of them is, so a quiet tenant pays for everyone else
+   * being online.
+   *
+   * Null is treated as "not ready yet" and nothing is subscribed:
+   * subscribing unfiltered while the account id loads would reintroduce
+   * exactly the fan-out this exists to avoid, on every page load.
+   */
+  accountId?: string | null;
 }
 
 export function useRealtime({
@@ -23,6 +38,7 @@ export function useRealtime({
   onMessageEvent,
   onConversationEvent,
   enabled = true,
+  accountId,
 }: UseRealtimeOptions) {
   const channelRef = useRef<RealtimeChannel | null>(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -41,6 +57,8 @@ export function useRealtime({
 
   useEffect(() => {
     if (!enabled) return;
+    // Wait for the tenant before opening anything. See `accountId`.
+    if (accountId === null || accountId === undefined) return;
 
     const supabase = createClient();
 
@@ -48,7 +66,15 @@ export function useRealtime({
       .channel(channelName)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "messages" },
+        {
+          event: "*",
+          schema: "public",
+          table: "messages",
+          // messages carries a denormalised account_id purely so this
+          // filter is possible — postgres_changes cannot follow
+          // conversation_id to the parent. See migration 085.
+          filter: `account_id=eq.${accountId}`,
+        },
         (payload) => {
           onMessageRef.current?.({
             eventType: payload.eventType as RealtimeEvent<Message>["eventType"],
@@ -59,7 +85,12 @@ export function useRealtime({
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "conversations" },
+        {
+          event: "*",
+          schema: "public",
+          table: "conversations",
+          filter: `account_id=eq.${accountId}`,
+        },
         (payload) => {
           onConversationRef.current?.({
             eventType: payload.eventType as RealtimeEvent<Conversation>["eventType"],
@@ -79,7 +110,7 @@ export function useRealtime({
       channelRef.current = null;
       setIsConnected(false);
     };
-  }, [channelName, enabled]);
+  }, [channelName, enabled, accountId]);
 
   const unsubscribe = useCallback(() => {
     if (channelRef.current) {

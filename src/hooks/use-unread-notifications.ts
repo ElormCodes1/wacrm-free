@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/hooks/use-auth";
 import type { Notification } from "@/types";
 
 /**
@@ -13,9 +14,14 @@ import type { Notification } from "@/types";
  * `useTotalUnread` for conversations.
  */
 export function useUnreadNotifications(): number {
+  // Notifications are addressed to a person, so the recipient is the
+  // tightest possible filter — and without it every signed-in user's
+  // policies are evaluated against every notification on the platform.
+  const { user } = useAuth();
   const [count, setCount] = useState(0);
 
   useEffect(() => {
+    if (!user?.id) return;
     const supabase = createClient();
     let cancelled = false;
 
@@ -34,7 +40,17 @@ export function useUnreadNotifications(): number {
       .channel("notifications-unread-count")
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "notifications" },
+        {
+          event: "*",
+          schema: "public",
+          table: "notifications",
+          // Notifications are addressed to a person, so the recipient is
+          // the tightest filter there is. Unfiltered, Realtime evaluates
+          // this subscriber's policies against every notification on the
+          // platform — cost that grows with how many customers are signed
+          // in, not with how many notifications they get.
+          filter: `user_id=eq.${user?.id}`,
+        },
         (payload) => {
           if (payload.eventType === "INSERT") {
             const row = payload.new as Notification;
@@ -57,7 +73,7 @@ export function useUnreadNotifications(): number {
       cancelled = true;
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [user?.id]);
 
   return count;
 }

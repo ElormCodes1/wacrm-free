@@ -13,6 +13,7 @@ import type {
   Contact,
   ConversationStatus,
 } from '@/types';
+import { useAuth } from '@/hooks/use-auth';
 import { useRealtime } from '@/hooks/use-realtime';
 import { shouldMovePreview, previewText } from '@/lib/whatsapp/conversation-preview';
 import { ConversationList } from '@/components/inbox/conversation-list';
@@ -31,6 +32,10 @@ import { useCompanySlug } from "@/components/tenancy/company-link";
 const CONTACT_PANEL_STORAGE_KEY = 'wacrm:inbox:contact-panel-open';
 
 export default function InboxPage() {
+  // The tenant, for scoping the realtime subscription below. Null until
+  // the profile resolves, which the hook reads as "not ready" and
+  // subscribes to nothing rather than to every account's traffic.
+  const { accountId } = useAuth();
   const router = useRouter();
   const companySlug = useCompanySlug();
   const searchParams = useSearchParams();
@@ -460,6 +465,9 @@ export default function InboxPage() {
     onMessageEvent: handleMessageEvent,
     onConversationEvent: handleConversationEvent,
     enabled: true,
+    // Scopes the subscription to this tenant. Until it resolves the hook
+    // subscribes to nothing, rather than to everything.
+    accountId,
   });
 
   /**

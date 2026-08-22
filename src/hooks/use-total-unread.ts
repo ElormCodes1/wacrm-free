@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/hooks/use-auth";
 import type { Conversation } from "@/types";
 
 /**
@@ -14,12 +15,19 @@ import type { Conversation } from "@/types";
  */
 export function useTotalUnread(): number {
   const [total, setTotal] = useState(0);
+  // Scopes the subscription to this tenant. Unfiltered, Realtime checks
+  // this subscriber's row-level policies against EVERY conversation
+  // change on the platform.
+  const { accountId } = useAuth();
 
   // Keep a live local mirror of {id: unread_count} so INSERT/UPDATE/DELETE
   // events can adjust the total in O(1) without refetching.
   const countsRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
+    // Nothing is subscribed until the tenant is known — subscribing
+    // unfiltered in the meantime is the very fan-out being avoided.
+    if (!accountId) return;
     const supabase = createClient();
     let cancelled = false;
 
@@ -46,7 +54,12 @@ export function useTotalUnread(): number {
       .channel("total-unread-realtime")
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "conversations" },
+        {
+          event: "*",
+          schema: "public",
+          table: "conversations",
+          filter: `account_id=eq.${accountId}`,
+        },
         (payload) => {
           const map = countsRef.current;
           if (payload.eventType === "DELETE") {
@@ -68,7 +81,7 @@ export function useTotalUnread(): number {
       cancelled = true;
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [accountId]);
 
   return total;
 }
