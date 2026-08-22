@@ -148,6 +148,18 @@ export const RATE_LIMITS = {
    *  instance deploy needs the Redis swap described at the top of
    *  this file (the per-key call sites don't change). */
   publicApi: { limit: 120, windowMs: 60_000 },
+  /** Operator sign-in, per IP. The operator plane can read and act
+   *  across every tenant, so its front door gets the tightest bucket
+   *  here. 10/5min is generous for a human mistyping a password and far
+   *  below anything useful for guessing one. */
+  operatorSignIn: { limit: 10, windowMs: 5 * 60_000 },
+  /** Second-factor attempts, per operator. This is the one that matters:
+   *  once a password is known, a six-digit code is only a million
+   *  guesses, and with no bucket an attacker can simply keep trying
+   *  against the current 30-second window until it lands. Five per
+   *  five minutes makes that hopeless while leaving room for a
+   *  fat-fingered code and a clock a little out of step. */
+  operatorSecondFactor: { limit: 5, windowMs: 5 * 60_000 },
   /** AI draft-reply generation, per user. 20/min is generous for an
    *  agent clicking "Draft with AI" while working a thread, and bounds
    *  spend on the account's own LLM key against an accidental
